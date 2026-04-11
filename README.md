@@ -55,6 +55,22 @@ npm run dev
 | [docs/05-security-design.md](docs/05-security-design.md) | Security controls and threat model |
 | [docs/06-acceptance-scenarios.md](docs/06-acceptance-scenarios.md) | User story acceptance tests |
 
+## Changelog
+
+All notable changes to this project are documented in this section. Versions follow API `version` in `apps/api/app/main.py` where applicable.
+
+### [Unreleased]
+
+- _(Add changes here before tagging a release.)_
+
+### [0.1.0] — 2026-04-11
+
+- Initial monorepo: Next.js web app, FastAPI API (`0.1.0`), shared package.
+- Local stack: Docker Compose for Postgres 16 and Redis 7.
+- API surface: auth, admin (Oracle connections, semantic layer, AI routing), chat, dashboards; `GET /health`.
+- Documentation set under `docs/` (vision, UX, solution architecture, technical roadmap/design, security, acceptance scenarios).
+- API tests via `pytest` with optional JSON report to `apps/api/test-record.json` (gitignored).
+
 ## Notes
 - Oracle is the first datasource.
 - AI task routing supports different providers/models per task profile.
