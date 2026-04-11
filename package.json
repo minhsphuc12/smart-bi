@@ -7,6 +7,7 @@
   ],
   "scripts": {
     "dev:web": "npm --workspace @smart-bi/web run dev",
-    "build:web": "npm --workspace @smart-bi/web run build"
+    "build:web": "npm --workspace @smart-bi/web run build",
+    "test:e2e": "npm --workspace @smart-bi/web run test:e2e"
   }
 }
