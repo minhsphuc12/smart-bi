@@ -161,6 +161,12 @@ function SemanticRow({ segment, item, onSaved, busy, setBusy, setError }) {
 
 const AI_TASKS = ["sql_gen", "answer_gen", "dashboard_gen", "extract_classify"];
 
+const SOURCE_TYPE_LABELS = {
+  oracle: "Oracle",
+  postgresql: "PostgreSQL",
+  mysql: "MySQL"
+};
+
 export default function AdminConsole() {
   const { ready, isAdmin } = useAuth();
   const [mainTab, setMainTab] = useState("connections");
@@ -170,13 +176,35 @@ export default function AdminConsole() {
   const [connError, setConnError] = useState("");
   const [connBusy, setConnBusy] = useState(false);
   const [form, setForm] = useState({
+    source_type: "oracle",
     name: "Local Oracle",
     host: "localhost",
     port: 1521,
     service_name: "ORCLPDB1",
+    database: "",
     username: "app_user",
     password: ""
   });
+
+  const defaultPortForSource = (t) => {
+    if (t === "postgresql") return 5432;
+    if (t === "mysql") return 3306;
+    return 1521;
+  };
+
+  function setSourceType(nextType) {
+    setForm((f) => ({
+      ...f,
+      source_type: nextType,
+      port: defaultPortForSource(nextType)
+    }));
+  }
+
+  function connectionTargetDisplay(c) {
+    const kind = c.source_type || "oracle";
+    const suffix = kind === "oracle" ? c.service_name : c.database;
+    return `${c.host}:${c.port}/${suffix || "—"}`;
+  }
   const [actionMessage, setActionMessage] = useState("");
   const [introspect, setIntrospect] = useState(null);
 
@@ -339,9 +367,9 @@ export default function AdminConsole() {
       <header className="stack" style={{ gap: 8 }}>
         <h1 style={{ margin: 0 }}>Admin console</h1>
         <p style={{ margin: 0, color: "var(--text-muted)", maxWidth: 820 }}>
-          Manage Oracle connections, semantic metadata, and AI routing profiles. All endpoints are
-          backed by the FastAPI MVP stubs—perfect for exercising the UX before production services
-          land.
+          Manage database connections (Oracle, PostgreSQL, MySQL), semantic metadata, and AI routing
+          profiles. All endpoints are backed by the FastAPI MVP stubs—perfect for exercising the UX
+          before production services land.
         </p>
       </header>
 
@@ -366,8 +394,20 @@ export default function AdminConsole() {
       {mainTab === "connections" ? (
         <section className="stack">
           <div className="card stack" style={{ padding: 22 }}>
-            <h2 style={{ marginTop: 0 }}>New Oracle connection</h2>
+            <h2 style={{ marginTop: 0 }}>New connection</h2>
             <form className="stack" style={{ gap: 0 }} onSubmit={createConnection}>
+              <div className="field" style={{ maxWidth: 320 }}>
+                <label htmlFor="c-source">Source type</label>
+                <select
+                  id="c-source"
+                  value={form.source_type}
+                  onChange={(e) => setSourceType(e.target.value)}
+                >
+                  <option value="oracle">Oracle</option>
+                  <option value="postgresql">PostgreSQL</option>
+                  <option value="mysql">MySQL</option>
+                </select>
+              </div>
               <div className="row" style={{ gap: 16 }}>
                 <div className="field" style={{ flex: "1 1 200px" }}>
                   <label htmlFor="c-name">Name</label>
@@ -398,15 +438,27 @@ export default function AdminConsole() {
                   />
                 </div>
               </div>
-              <div className="field">
-                <label htmlFor="c-service">Service name</label>
-                <input
-                  id="c-service"
-                  value={form.service_name}
-                  onChange={(e) => setForm({ ...form, service_name: e.target.value })}
-                  required
-                />
-              </div>
+              {form.source_type === "oracle" ? (
+                <div className="field">
+                  <label htmlFor="c-service">Service name</label>
+                  <input
+                    id="c-service"
+                    value={form.service_name}
+                    onChange={(e) => setForm({ ...form, service_name: e.target.value })}
+                    required
+                  />
+                </div>
+              ) : (
+                <div className="field">
+                  <label htmlFor="c-database">Database name</label>
+                  <input
+                    id="c-database"
+                    value={form.database}
+                    onChange={(e) => setForm({ ...form, database: e.target.value })}
+                    required
+                  />
+                </div>
+              )}
               <div className="row" style={{ gap: 16 }}>
                 <div className="field" style={{ flex: 1 }}>
                   <label htmlFor="c-user">Username</label>
@@ -457,6 +509,7 @@ export default function AdminConsole() {
                     <tr>
                       <th>ID</th>
                       <th>Name</th>
+                      <th>Type</th>
                       <th>Target</th>
                       <th>User</th>
                       <th>Secret</th>
@@ -468,9 +521,8 @@ export default function AdminConsole() {
                       <tr key={c.id}>
                         <td className="mono">{c.id}</td>
                         <td style={{ fontWeight: 600 }}>{c.name}</td>
-                        <td className="mono">
-                          {c.host}:{c.port}/{c.service_name}
-                        </td>
+                        <td className="mono">{SOURCE_TYPE_LABELS[c.source_type || "oracle"]}</td>
+                        <td className="mono">{connectionTargetDisplay(c)}</td>
                         <td>{c.username}</td>
                         <td>{c.password}</td>
                         <td className="row" style={{ gap: 8 }}>

@@ -29,7 +29,8 @@ test.describe("Smart BI MVP", () => {
     await expect(page.getByRole("button", { name: "Connections" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Semantic layer" })).toBeVisible();
     await expect(page.getByRole("button", { name: "AI routing" })).toBeVisible();
-    await expect(page.getByRole("heading", { name: /New Oracle connection/i })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /New connection/i })).toBeVisible();
+    await expect(page.getByLabel("Source type")).toBeVisible();
     await page.getByRole("button", { name: "Semantic layer" }).click();
     await expect(page.getByRole("heading", { name: "Table dictionary" })).toBeVisible();
   });
