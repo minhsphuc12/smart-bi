@@ -1,18 +1,33 @@
+from typing import Literal
+
 from fastapi import APIRouter
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, model_validator
 
 router = APIRouter(prefix="/admin/connections", tags=["admin-connections"])
 
 _connections: list[dict] = []
 
+SourceType = Literal["oracle", "postgresql", "mysql"]
+
 
 class ConnectionPayload(BaseModel):
     name: str
+    source_type: SourceType = "oracle"
     host: str
     port: int = 1521
-    service_name: str
+    service_name: str | None = Field(default=None, description="Oracle service or PDB name")
+    database: str | None = Field(default=None, description="PostgreSQL or MySQL database name")
     username: str
     password: str
+
+    @model_validator(mode="after")
+    def require_target_for_engine(self) -> "ConnectionPayload":
+        if self.source_type == "oracle":
+            if not (self.service_name and self.service_name.strip()):
+                raise ValueError("service_name is required for Oracle connections")
+        elif not (self.database and self.database.strip()):
+            raise ValueError("database is required for PostgreSQL and MySQL connections")
+        return self
 
 
 @router.get("")
