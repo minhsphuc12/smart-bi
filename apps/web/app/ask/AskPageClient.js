@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { apiRequest } from "../../lib/api";
 
@@ -97,6 +97,21 @@ export default function AskPageClient() {
   const [messages, setMessages] = useState([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [connections, setConnections] = useState([]);
+  const [connectionId, setConnectionId] = useState("");
+
+  const loadConnections = useCallback(async () => {
+    try {
+      const data = await apiRequest("/admin/connections");
+      setConnections(Array.isArray(data) ? data : []);
+    } catch {
+      setConnections([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadConnections();
+  }, [loadConnections]);
 
   async function onSubmit(e) {
     e.preventDefault();
@@ -107,7 +122,11 @@ export default function AskPageClient() {
     setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: "user", text: trimmed }]);
     setQuestion("");
     try {
-      const data = await apiRequest("/chat/questions", { method: "POST", body: { question: trimmed } });
+      const body = { question: trimmed };
+      if (connectionId !== "") {
+        body.connection_id = Number(connectionId);
+      }
+      const data = await apiRequest("/chat/questions", { method: "POST", body });
       setMessages((prev) => [
         ...prev,
         {
@@ -137,7 +156,8 @@ export default function AskPageClient() {
         <h1 style={{ margin: 0 }}>Ask Data</h1>
         <p style={{ margin: 0, color: "var(--text-muted)" }}>
           Pose a business question, inspect the narrative answer, then peel back SQL and tabular evidence.
-          Responses use the MVP chat endpoint with simulated models.
+          Pick a saved connection to run a live read-only preview (max 50 rows) from your database; answer
+          text still uses the MVP model stub until NL2SQL is wired.
         </p>
       </header>
 
@@ -169,6 +189,27 @@ export default function AskPageClient() {
       </div>
 
       <form className="card stack" style={{ padding: 16, gap: 12 }} onSubmit={onSubmit}>
+        <div className="field" style={{ maxWidth: 420 }}>
+          <label htmlFor="conn">Data connection (optional)</label>
+          <select
+            id="conn"
+            value={connectionId}
+            onChange={(e) => setConnectionId(e.target.value)}
+            disabled={loading}
+          >
+            <option value="">Demo — stub SQL and sample grid</option>
+            {connections.map((c) => (
+              <option key={c.id} value={String(c.id)}>
+                #{c.id} · {c.name} ({c.source_type})
+              </option>
+            ))}
+          </select>
+          <p style={{ margin: "6px 0 0", fontSize: "0.85rem", color: "var(--text-muted)" }}>
+            With a connection selected, Ask runs <code className="mono">SELECT … LIMIT 50</code> on a table
+            that matches your wording (or the first table). Run <strong>Introspect</strong> in Admin first
+            for warmer cache, or the API will introspect on demand.
+          </p>
+        </div>
         <label htmlFor="q" className="sr-only">
           Question
         </label>

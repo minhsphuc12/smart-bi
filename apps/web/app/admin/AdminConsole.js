@@ -161,6 +161,48 @@ function SemanticRow({ segment, item, onSaved, busy, setBusy, setError }) {
 
 const AI_TASKS = ["sql_gen", "answer_gen", "dashboard_gen", "extract_classify"];
 
+function normalizeRoutingAgainstCatalog(provider, model, catalog) {
+  if (!catalog?.providers?.length) {
+    return { provider: provider || "openai", model: model || "gpt-4o-mini" };
+  }
+  const prov = catalog.providers.some((p) => p.id === provider)
+    ? provider
+    : catalog.providers[0].id;
+  const models = catalog.models_by_provider[prov] || [];
+  const mod = models.includes(model) ? model : models[0] || "";
+  return { provider: prov, model: mod };
+}
+
+function profileToForm(task, profile, catalog) {
+  const base = {
+    task,
+    temperature: 0,
+    max_tokens: 1200,
+    timeout: 30,
+    cost_limit: 1
+  };
+  if (!profile) {
+    return {
+      ...base,
+      ...normalizeRoutingAgainstCatalog("openai", "gpt-4o-mini", catalog)
+    };
+  }
+  const { provider, model } = normalizeRoutingAgainstCatalog(
+    profile.provider,
+    profile.model,
+    catalog
+  );
+  return {
+    task,
+    provider,
+    model,
+    temperature: profile.temperature ?? base.temperature,
+    max_tokens: profile.max_tokens ?? base.max_tokens,
+    timeout: profile.timeout ?? base.timeout,
+    cost_limit: profile.cost_limit ?? base.cost_limit
+  };
+}
+
 const SOURCE_TYPE_LABELS = {
   oracle: "Oracle",
   postgresql: "PostgreSQL",
@@ -233,7 +275,7 @@ export default function AdminConsole() {
       await apiRequest("/admin/connections", { method: "POST", body: form });
       setForm((f) => ({ ...f, password: "" }));
       await loadConnections();
-      setActionMessage("Connection saved (in-memory stub).");
+      setActionMessage("Connection saved (credentials kept in API process memory until restart).");
     } catch (err) {
       setConnError(err.message);
     } finally {
@@ -262,7 +304,7 @@ export default function AdminConsole() {
     try {
       const res = await apiRequest(`/admin/connections/${id}/introspect`, { method: "POST" });
       setIntrospect(res);
-      setActionMessage("Introspection finished (sample schema).");
+      setActionMessage("Introspection finished.");
     } catch (e) {
       setConnError(e.message);
     } finally {
@@ -271,13 +313,14 @@ export default function AdminConsole() {
   }
 
   const [profiles, setProfiles] = useState({});
+  const [aiCatalog, setAiCatalog] = useState(null);
   const [aiError, setAiError] = useState("");
   const [aiBusy, setAiBusy] = useState(false);
   const [aiMessage, setAiMessage] = useState("");
   const [routingForm, setRoutingForm] = useState({
     task: "sql_gen",
-    provider: "providerA",
-    model: "sql-model",
+    provider: "openai",
+    model: "gpt-4o-mini",
     temperature: 0,
     max_tokens: 1200,
     timeout: 30,
@@ -294,11 +337,33 @@ export default function AdminConsole() {
     }
   }, []);
 
+  const loadCatalog = useCallback(async () => {
+    setAiError("");
+    try {
+      const data = await apiRequest("/admin/ai-routing/catalog");
+      if (data?.providers && data?.models_by_provider) {
+        setAiCatalog(data);
+      } else {
+        setAiError("Invalid catalog response from API.");
+      }
+    } catch (e) {
+      setAiError(e.message);
+    }
+  }, []);
+
   useEffect(() => {
     if (ready && isAdmin && mainTab === "ai") {
       loadProfiles();
+      loadCatalog();
     }
-  }, [ready, isAdmin, mainTab, loadProfiles]);
+  }, [ready, isAdmin, mainTab, loadProfiles, loadCatalog]);
+
+  useEffect(() => {
+    if (mainTab !== "ai" || !aiCatalog) {
+      return;
+    }
+    setRoutingForm((f) => profileToForm(f.task, profiles[f.task], aiCatalog));
+  }, [mainTab, aiCatalog, profiles]);
 
   async function saveProfile(e) {
     e.preventDefault();
@@ -368,8 +433,8 @@ export default function AdminConsole() {
         <h1 style={{ margin: 0 }}>Admin console</h1>
         <p style={{ margin: 0, color: "var(--text-muted)", maxWidth: 820 }}>
           Manage database connections (Oracle, PostgreSQL, MySQL), semantic metadata, and AI routing
-          profiles. All endpoints are backed by the FastAPI MVP stubs—perfect for exercising the UX
-          before production services land.
+          profiles. Connection test and introspection run against your real databases; credentials stay
+          in the API process until it restarts.
         </p>
       </header>
 
@@ -606,16 +671,22 @@ export default function AdminConsole() {
           <div className="card stack" style={{ padding: 22 }}>
             <h2 style={{ marginTop: 0 }}>Routing profile</h2>
             <p style={{ marginTop: 0, color: "var(--text-muted)" }}>
-              Choose a task key, tune provider settings, validate, then save. Values stay in the API
-              process memory until restart.
+              Choose a task key, pick an allowlisted provider and model (from the API catalog), validate,
+              then save. Values stay in the API process memory until restart.
             </p>
+            {!aiCatalog ? (
+              <p style={{ marginTop: 0, color: "var(--text-muted)" }}>Loading provider catalog…</p>
+            ) : null}
             <form className="stack" style={{ gap: 0 }} onSubmit={saveProfile}>
               <div className="field">
                 <label htmlFor="task">Task</label>
                 <select
                   id="task"
                   value={routingForm.task}
-                  onChange={(e) => setRoutingForm({ ...routingForm, task: e.target.value })}
+                  onChange={(e) => {
+                    const nextTask = e.target.value;
+                    setRoutingForm(profileToForm(nextTask, profiles[nextTask], aiCatalog));
+                  }}
                 >
                   {AI_TASKS.map((t) => (
                     <option key={t} value={t}>
@@ -627,21 +698,40 @@ export default function AdminConsole() {
               <div className="row" style={{ gap: 16 }}>
                 <div className="field" style={{ flex: 1 }}>
                   <label htmlFor="provider">Provider</label>
-                  <input
+                  <select
                     id="provider"
                     value={routingForm.provider}
-                    onChange={(e) => setRoutingForm({ ...routingForm, provider: e.target.value })}
-                    required
-                  />
+                    disabled={!aiCatalog}
+                    onChange={(e) => {
+                      const nextProvider = e.target.value;
+                      const models = aiCatalog?.models_by_provider?.[nextProvider] || [];
+                      const nextModel = models.includes(routingForm.model)
+                        ? routingForm.model
+                        : models[0] || "";
+                      setRoutingForm({ ...routingForm, provider: nextProvider, model: nextModel });
+                    }}
+                  >
+                    {(aiCatalog?.providers || []).map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.label}
+                      </option>
+                    ))}
+                  </select>
                 </div>
                 <div className="field" style={{ flex: 1 }}>
                   <label htmlFor="model">Model</label>
-                  <input
+                  <select
                     id="model"
                     value={routingForm.model}
+                    disabled={!aiCatalog}
                     onChange={(e) => setRoutingForm({ ...routingForm, model: e.target.value })}
-                    required
-                  />
+                  >
+                    {(aiCatalog?.models_by_provider?.[routingForm.provider] || []).map((m) => (
+                      <option key={m} value={m}>
+                        {m}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
               <div className="row" style={{ gap: 16 }}>
@@ -691,10 +781,15 @@ export default function AdminConsole() {
               ) : null}
               {aiMessage ? <p className="badge">{aiMessage}</p> : null}
               <div className="row">
-                <button className="btn btn-primary" type="submit" disabled={aiBusy}>
+                <button className="btn btn-primary" type="submit" disabled={aiBusy || !aiCatalog}>
                   Save profile
                 </button>
-                <button type="button" className="btn btn-ghost" onClick={validateProfile} disabled={aiBusy}>
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  onClick={validateProfile}
+                  disabled={aiBusy || !aiCatalog}
+                >
                   Validate configuration
                 </button>
               </div>
