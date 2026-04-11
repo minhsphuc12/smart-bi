@@ -249,6 +249,46 @@ export default function AdminConsole() {
   }
   const [actionMessage, setActionMessage] = useState("");
   const [introspect, setIntrospect] = useState(null);
+  const [editingId, setEditingId] = useState(null);
+  const [editForm, setEditForm] = useState({
+    source_type: "oracle",
+    name: "",
+    host: "",
+    port: 1521,
+    service_name: "",
+    database: "",
+    username: "",
+    password: ""
+  });
+
+  function setEditSourceType(nextType) {
+    setEditForm((f) => ({
+      ...f,
+      source_type: nextType,
+      port: defaultPortForSource(nextType)
+    }));
+  }
+
+  function openEditConnection(c) {
+    setEditingId(c.id);
+    setEditForm({
+      source_type: c.source_type || "oracle",
+      name: c.name || "",
+      host: c.host || "",
+      port: c.port ?? defaultPortForSource(c.source_type || "oracle"),
+      service_name: c.service_name || "",
+      database: c.database || "",
+      username: c.username || "",
+      password: ""
+    });
+    setConnError("");
+    setActionMessage("");
+  }
+
+  function cancelEditConnection() {
+    setEditingId(null);
+    setEditForm((f) => ({ ...f, password: "" }));
+  }
 
   const loadConnections = useCallback(async () => {
     setConnError("");
@@ -275,7 +315,7 @@ export default function AdminConsole() {
       await apiRequest("/admin/connections", { method: "POST", body: form });
       setForm((f) => ({ ...f, password: "" }));
       await loadConnections();
-      setActionMessage("Connection saved (credentials kept in API process memory until restart).");
+      setActionMessage("Connection saved to disk.");
     } catch (err) {
       setConnError(err.message);
     } finally {
@@ -292,6 +332,31 @@ export default function AdminConsole() {
       setActionMessage(`Test: ${res.status} (connection #${res.connection_id})`);
     } catch (e) {
       setConnError(e.message);
+    } finally {
+      setConnBusy(false);
+    }
+  }
+
+  async function updateConnection(e) {
+    e.preventDefault();
+    if (editingId == null) {
+      return;
+    }
+    setConnBusy(true);
+    setConnError("");
+    setActionMessage("");
+    try {
+      const body = { ...editForm };
+      if (!body.password || !String(body.password).trim()) {
+        delete body.password;
+      }
+      await apiRequest(`/admin/connections/${editingId}`, { method: "PUT", body });
+      setEditingId(null);
+      setEditForm((f) => ({ ...f, password: "" }));
+      await loadConnections();
+      setActionMessage("Connection updated.");
+    } catch (err) {
+      setConnError(err.message);
     } finally {
       setConnBusy(false);
     }
@@ -433,8 +498,10 @@ export default function AdminConsole() {
         <h1 style={{ margin: 0 }}>Admin console</h1>
         <p style={{ margin: 0, color: "var(--text-muted)", maxWidth: 820 }}>
           Manage database connections (Oracle, PostgreSQL, MySQL), semantic metadata, and AI routing
-          profiles. Connection test and introspection run against your real databases; credentials stay
-          in the API process until it restarts.
+          profiles. Connections are persisted as JSON on the API host (default path{" "}
+          <span className="mono">apps/api/data/connections.json</span>). Passwords are stored in plaintext in
+          that file for this MVP. Set <span className="mono">SMART_BI_CONNECTIONS_FILE</span> to use a
+          different path.
         </p>
       </header>
 
@@ -558,6 +625,108 @@ export default function AdminConsole() {
             </form>
           </div>
 
+          {editingId != null ? (
+            <div className="card stack" style={{ padding: 22 }}>
+              <h2 style={{ marginTop: 0 }}>Edit connection #{editingId}</h2>
+              <form className="stack" style={{ gap: 0 }} onSubmit={updateConnection}>
+                <div className="field" style={{ maxWidth: 320 }}>
+                  <label htmlFor="e-source">Source type</label>
+                  <select
+                    id="e-source"
+                    value={editForm.source_type}
+                    onChange={(e) => setEditSourceType(e.target.value)}
+                  >
+                    <option value="oracle">Oracle</option>
+                    <option value="postgresql">PostgreSQL</option>
+                    <option value="mysql">MySQL</option>
+                  </select>
+                </div>
+                <div className="row" style={{ gap: 16 }}>
+                  <div className="field" style={{ flex: "1 1 200px" }}>
+                    <label htmlFor="e-name">Name</label>
+                    <input
+                      id="e-name"
+                      value={editForm.name}
+                      onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                      required
+                    />
+                  </div>
+                  <div className="field" style={{ flex: "1 1 200px" }}>
+                    <label htmlFor="e-host">Host</label>
+                    <input
+                      id="e-host"
+                      value={editForm.host}
+                      onChange={(e) => setEditForm({ ...editForm, host: e.target.value })}
+                      required
+                    />
+                  </div>
+                  <div className="field" style={{ flex: "1 1 120px" }}>
+                    <label htmlFor="e-port">Port</label>
+                    <input
+                      id="e-port"
+                      type="number"
+                      value={editForm.port}
+                      onChange={(e) => setEditForm({ ...editForm, port: Number(e.target.value) })}
+                      required
+                    />
+                  </div>
+                </div>
+                {editForm.source_type === "oracle" ? (
+                  <div className="field">
+                    <label htmlFor="e-service">Service name</label>
+                    <input
+                      id="e-service"
+                      value={editForm.service_name}
+                      onChange={(e) => setEditForm({ ...editForm, service_name: e.target.value })}
+                      required
+                    />
+                  </div>
+                ) : (
+                  <div className="field">
+                    <label htmlFor="e-database">Database name</label>
+                    <input
+                      id="e-database"
+                      value={editForm.database}
+                      onChange={(e) => setEditForm({ ...editForm, database: e.target.value })}
+                      required
+                    />
+                  </div>
+                )}
+                <div className="row" style={{ gap: 16 }}>
+                  <div className="field" style={{ flex: 1 }}>
+                    <label htmlFor="e-user">Username</label>
+                    <input
+                      id="e-user"
+                      value={editForm.username}
+                      onChange={(e) => setEditForm({ ...editForm, username: e.target.value })}
+                      autoComplete="off"
+                      required
+                    />
+                  </div>
+                  <div className="field" style={{ flex: 1 }}>
+                    <label htmlFor="e-pass">New password (optional)</label>
+                    <input
+                      id="e-pass"
+                      type="password"
+                      value={editForm.password}
+                      onChange={(e) => setEditForm({ ...editForm, password: e.target.value })}
+                      autoComplete="new-password"
+                      placeholder="Leave blank to keep current password"
+                    />
+                  </div>
+                </div>
+                <div className="row" style={{ gap: 8 }}>
+                  <button className="btn btn-primary" type="submit" disabled={connBusy}>
+                    Save changes
+                  </button>
+                  <button type="button" className="btn btn-ghost" onClick={cancelEditConnection} disabled={connBusy}>
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            </div>
+          ) : null}
+
           <div className="card stack" style={{ padding: 22 }}>
             <div className="row-spread">
               <h2 style={{ margin: 0 }}>Saved connections</h2>
@@ -578,7 +747,7 @@ export default function AdminConsole() {
                       <th>Target</th>
                       <th>User</th>
                       <th>Secret</th>
-                      <th>Actions</th>
+                      <th style={{ minWidth: 200 }}>Actions</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -590,7 +759,10 @@ export default function AdminConsole() {
                         <td className="mono">{connectionTargetDisplay(c)}</td>
                         <td>{c.username}</td>
                         <td>{c.password}</td>
-                        <td className="row" style={{ gap: 8 }}>
+                        <td className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+                          <button type="button" className="btn btn-ghost" onClick={() => openEditConnection(c)} disabled={connBusy}>
+                            Edit
+                          </button>
                           <button type="button" className="btn btn-ghost" onClick={() => testConnection(c.id)} disabled={connBusy}>
                             Test
                           </button>
