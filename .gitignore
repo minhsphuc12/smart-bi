@@ -15,6 +15,7 @@ venv/
 coverage/
 apps/api/.mypy_cache/
 apps/api/test-record.json
+apps/api/data/connections.json
 playwright-report/
 test-results/
 apps/web/playwright-report/
