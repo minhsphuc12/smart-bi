@@ -14,3 +14,4 @@ venv/
 .env.*
 coverage/
 apps/api/.mypy_cache/
+apps/api/test-record.json

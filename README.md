@@ -23,6 +23,19 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload --port 8000
 ```
 
+### API tests
+
+From `apps/api` with the virtual environment activated:
+
+```bash
+cd apps/api
+source .venv/bin/activate
+pip install -r requirements.txt
+pytest tests/test_api.py -v
+```
+
+Pytest writes a JSON report to `apps/api/test-record.json` (via `pytest-json-report` in `apps/api/pytest.ini`). That file is gitignored; remove `--json-report` and related flags from `addopts` if you do not want a local report.
+
 ### 3) Web
 ```bash
 cd apps/web
