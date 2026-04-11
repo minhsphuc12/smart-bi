@@ -2,6 +2,8 @@
 
 This document defines personas, information architecture, primary journeys, UX milestones, and interaction principles for the MVP. Delivery sequencing aligns with [Technical Roadmap](./03-technical-roadmap.md).
 
+**Status legend:** **[Done]** = implemented in `apps/web` to UX intent · **[Partial]** = placeholder / thin shell · **[To do]** = not built
+
 ## Personas
 - **Admin**: configures datasource and semantic layer; governs AI routing for tasks.
 - **Business user**: asks questions, inspects evidence (SQL + data), and manages dashboards with AI assistance.
@@ -10,23 +12,25 @@ This document defines personas, information architecture, primary journeys, UX m
 
 Top-level areas (role-aware navigation):
 
-| Area | Audience | Purpose |
-|------|----------|---------|
-| Sign-in / session | All | Access the product |
-| Admin — Connections | Admin | Create, test, introspect Oracle |
-| Admin — Semantic | Admin | Tables, relationships, dictionary, metrics |
-| Admin — AI routing | Admin | Task profiles (provider, model, limits, fallback) |
-| Ask Data (chat) | User | Questions, answers, SQL, tables |
-| Dashboards | User | List, open, create from chat, AI edit with versions |
+| Area | Audience | Purpose | UX build |
+|------|----------|---------|----------|
+| Sign-in / session | All | Access the product | **[Partial]** — stub login UX if any; not production auth UI |
+| Admin — Connections | Admin | Create, test, introspect Oracle | **[To do]** |
+| Admin — Semantic | Admin | Tables, relationships, dictionary, metrics | **[To do]** |
+| Admin — AI routing | Admin | Task profiles (provider, model, limits, fallback) | **[To do]** |
+| Ask Data (chat) | User | Questions, answers, SQL, tables | **[To do]** |
+| Dashboards | User | List, open, create from chat, AI edit with versions | **[To do]** |
 
 ## Screen inventory (MVP)
 
-- **Auth**: login; session recovery or sign-out as needed.
-- **Admin connection**: form (host, port, service/SID, credentials), test result, introspect action and job status.
-- **Admin semantic**: editors for table descriptions, relationship overrides, business terms, metrics; version indicator where applicable.
-- **Admin AI routing**: profile list/detail; validate configuration action.
-- **Chat workspace**: thread or session list, composer, message list with **answer card** (summary, expandable SQL, table, confidence/warnings).
-- **Dashboard**: gallery/list; detail view; create-from-prompt flow; AI edit with **preview** and version history / rollback.
+- **[To do] Auth**: login; session recovery or sign-out as needed.
+- **[To do] Admin connection**: form (host, port, service/SID, credentials), test result, introspect action and job status.
+- **[To do] Admin semantic**: editors for table descriptions, relationship overrides, business terms, metrics; version indicator where applicable.
+- **[To do] Admin AI routing**: profile list/detail; validate configuration action.
+- **[To do] Chat workspace**: thread or session list, composer, message list with **answer card** (summary, expandable SQL, table, confidence/warnings).
+- **[To do] Dashboard**: gallery/list; detail view; create-from-prompt flow; AI edit with **preview** and version history / rollback.
+
+**Note:** `apps/web` currently ships a **thin navigation shell** and placeholder pages; the screens above are **specification**, not yet product UI.
 
 ## Core User Journeys
 1. Admin connects Oracle and validates connectivity.
@@ -38,28 +42,28 @@ Top-level areas (role-aware navigation):
 ## UX Milestones
 
 ### Milestone A - Foundation UX
-- Authentication screens
-- Role-aware navigation
-- Empty states and onboarding hints
+- **[Partial]** Authentication screens
+- **[Partial]** Role-aware navigation (basic shell only)
+- **[To do]** Empty states and onboarding hints
 
 ### Milestone B - Admin Console UX
-- Connection form with test feedback
-- Schema browser with search and filters
-- Semantic editor for tables, relationships, dictionary, and metrics
+- **[To do]** Connection form with test feedback
+- **[To do]** Schema browser with search and filters
+- **[To do]** Semantic editor for tables, relationships, dictionary, and metrics
 
 ### Milestone C - Ask Data UX
-- Chat with message history
-- Structured answer card:
+- **[To do]** Chat with message history
+- **[To do]** Structured answer card:
   - Answer summary
   - SQL panel
   - Data table
-- Confidence and warning indicators
+- **[To do]** Confidence and warning indicators
 
 ### Milestone D - Dashboard UX
-- Prompt-to-dashboard flow
-- Dashboard preview and save
-- Dashboard list/detail
-- AI edit prompt with diff preview and version rollback
+- **[To do]** Prompt-to-dashboard flow
+- **[To do]** Dashboard preview and save
+- **[To do]** Dashboard list/detail
+- **[To do]** AI edit prompt with diff preview and version rollback
 
 ## Interaction patterns
 - **Evidence first**: surface SQL and raw rows alongside narrative so users can validate the answer.

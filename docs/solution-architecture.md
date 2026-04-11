@@ -2,6 +2,8 @@
 
 This document describes the solution from an architecture perspective: capabilities, major components, integrations, and how they satisfy MVP goals. Detailed API and data shapes live in [Technical Design](./04-technical-design.md).
 
+**Implementation status:** Architecture below is **target**. For phase-by-phase build state see [Technical Roadmap](./03-technical-roadmap.md) (status table at top). Today the API exposes **contract-oriented stubs** and **in-memory** state; Postgres/Redis in Compose are **not** yet the system of record for domain data.
+
 ## 1. Purpose and scope
 
 Smart BI MVP delivers:
@@ -14,15 +16,15 @@ Out of scope for this view matches [Product Vision and Scope](./01-product-visio
 
 ## 2. Capability map
 
-| Capability | Primary consumers | Realized by |
-|------------|-------------------|-------------|
-| Identity & roles | All users | JWT auth, `admin` / `user` RBAC |
-| Datasource lifecycle | Admin | Connection CRUD, test, introspection |
-| Semantic governance | Admin | Tables, relationships, dictionary, metrics + versioning |
-| Model governance | Admin | AI routing profiles per task |
-| Ask data | Business user | NL2SQL pipeline, safety policy, execution, narrative |
-| Dashboard lifecycle | Business user | Create, list, detail, AI edit, versions |
-| Observability | Platform | Request logging, AI task metadata (extend for full metrics) |
+| Capability | Primary consumers | Realized by | Build status |
+|------------|-------------------|-------------|--------------|
+| Identity & roles | All users | JWT auth, `admin` / `user` RBAC | **[Partial]** — dev login only; **no** enforced RBAC |
+| Datasource lifecycle | Admin | Connection CRUD, test, introspection | **[Partial]** — stub test/introspect; **no** Oracle |
+| Semantic governance | Admin | Tables, relationships, dictionary, metrics + versioning | **[Partial]** — in-memory CRUD; **no** versioning |
+| Model governance | Admin | AI routing profiles per task | **[Partial]** — profiles in memory; **no** real providers |
+| Ask data | Business user | NL2SQL pipeline, safety policy, execution, narrative | **[Partial]** — simulated AI; **hardcoded** SQL/rows |
+| Dashboard lifecycle | Business user | Create, list, detail, AI edit, versions | **[Partial]** — in-memory; simplified AI edit |
+| Observability | Platform | Request logging, AI task metadata (extend for full metrics) | **[Partial]** — HTTP logging only |
 
 ## 3. Context (system landscape)
 

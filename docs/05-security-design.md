@@ -1,5 +1,18 @@
 # Smart BI Security Design
 
+## Implementation status
+
+This document is the **target security model** for MVP. Current code is a **development scaffold**.
+
+| Control | Doc intent | Repo status |
+|---------|------------|-------------|
+| JWT authentication | Short-lived tokens | **[Partial]** — `POST /auth/login` returns a dev token; **no** signing/verification middleware |
+| RBAC on admin vs user routes | Enforced server-side | **[To do]** — not enforced on routers |
+| Credential protection (no raw secrets to client, encryption at rest) | Required | **[To do]** — passwords masked in responses only; **no** encryption layer |
+| SQL safety policy | Parser + allowlist + limits | **[To do]** — not implemented in execution path |
+| AI input/output validation | Sanitization and boundaries | **[Partial]** — minimal; provider calls simulated |
+| Audit events and metrics | Login, changes, SQL rejections | **[To do]** |
+
 ## Security Objectives
 - Protect datasource credentials and user data.
 - Prevent unsafe SQL execution.

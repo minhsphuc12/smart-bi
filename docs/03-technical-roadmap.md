@@ -2,6 +2,19 @@
 
 This roadmap orders engineering work from documentation through MVP hardening. It pairs with [User Experience](./02-ux-roadmap.md) milestones and [Solution Architecture](./solution-architecture.md).
 
+**Status legend:** **[Done]** = meets phase intent for current repo · **[Partial]** = scaffolding, stubs, or dev-only · **[To do]** = not started or not meeting phase goals
+
+| Phase | Summary status |
+|-------|----------------|
+| 0 | **[Done]** |
+| 1 | **[Partial]** |
+| 2 | **[Partial]** |
+| 3 | **[Partial]** |
+| 4 | **[Partial]** |
+| 5 | **[Partial]** |
+| 6 | **[Partial]** |
+| 7 | **[Partial]** |
+
 ## Milestone overview
 
 ```mermaid
@@ -16,50 +29,46 @@ flowchart LR
 ```
 
 ## Phase 0 - Documentation and Design Gate
-- Finalize product, UX, technical, and security documents.
-- Obtain stakeholder approval before coding.
+- **[Done]** Finalize product, UX, technical, and security documents.
+- **[To do]** Obtain stakeholder approval before coding (process; outside repo).
 
 ## Phase 1 - Platform Bootstrap
-- Monorepo with Next.js app and FastAPI service.
-- Postgres + Redis via Docker Compose.
-- Shared contracts package.
-- JWT auth and RBAC.
+- **[Done]** Monorepo with Next.js app and FastAPI service.
+- **[Done]** Postgres + Redis via Docker Compose.
+- **[Done]** Shared contracts package (`packages/shared`).
+- **[Partial]** JWT auth and RBAC — dev `POST /auth/login` only; **no** enforced JWT on routers, **no** Postgres-backed users.
 
 ## Phase 2 - Data Admin Capabilities
-- Oracle connection profile management.
-- Connectivity test endpoint.
-- Schema introspection pipeline for tables, columns, PK/FK.
+- **[Partial]** Oracle connection profile management — in-memory list; **not** persisted to Postgres.
+- **[Partial]** Connectivity test endpoint — stub success response; **not** real Oracle connectivity.
+- **[Partial]** Schema introspection pipeline — stub payload; **not** real introspection job or PK/FK sync.
 
 ## Phase 3 - Semantic Layer
-- CRUD for:
-  - Table descriptions
-  - Relationships
-  - Dictionary terms
-  - Metrics
-- Versioning for semantic definitions.
+- **[Partial]** CRUD for table descriptions, relationships, dictionary terms, metrics — in-memory; **not** durable semantic store.
+- **[To do]** Versioning for semantic definitions (as specified for production MVP).
 
 ## Phase 4 - AI Orchestration
-- Provider abstraction.
-- Task-based routing profiles.
-- Retry and fallback strategy.
-- Latency/cost tracking.
+- **[Partial]** Provider abstraction — task routing reads profiles; **no** real LLM/SDK calls (`run_task` simulated).
+- **[Partial]** Task-based routing profiles — admin API holds profiles in memory.
+- **[To do]** Retry and fallback strategy (beyond profile fields).
+- **[To do]** Latency/cost tracking.
 
 ## Phase 5 - Ask Data
-- Retrieval of semantic context.
-- SQL generation, SQL safety validation, execution.
-- Result-grounded narrative response generation.
-- Unified response payload for frontend rendering.
+- **[To do]** Retrieval of semantic context for NL2SQL.
+- **[Partial]** SQL generation, SQL safety validation, execution — **hardcoded** SQL/rows; **no** parser/allowlist/Oracle execution path as designed.
+- **[Partial]** Result-grounded narrative — simulated `answer_gen` output.
+- **[Done]** Unified response payload shape for frontend rendering (contract-oriented).
 
 ## Phase 6 - Dashboard AI
-- Generate dashboard spec from chat outputs.
-- Save dashboard and versions.
-- AI edit with patch + preview + rollback.
+- **[Partial]** Generate dashboard spec — simplified fixed spec + simulated `dashboard_gen`.
+- **[Partial]** Save dashboard and versions — in-memory only.
+- **[Partial]** AI edit with patch + preview + rollback — simplified merge; **no** full patch/diff UX contract.
 
 ## Phase 7 - Hardening
-- Unit and integration tests.
-- E2E happy paths for 5 user stories.
-- Logging and metrics.
-- Release runbook.
+- **[Partial]** Unit and integration tests — API tests exist (`pytest`); expand coverage.
+- **[To do]** E2E happy paths for 5 user stories.
+- **[Partial]** Logging — request logging middleware present.
+- **[To do]** Metrics and release runbook to production standard.
 
 ## Dependencies and critical path
 

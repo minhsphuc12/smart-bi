@@ -1,5 +1,15 @@
 # Smart BI MVP Acceptance Scenarios
 
+**Verification status (against production MVP intent):** **[Pass — partial]** = API/demo only with stubs · **[To do]** = full scenario not yet verifiable end-to-end
+
+| Story | Status |
+|-------|--------|
+| 1 Admin Connect Oracle | **[Pass — partial]** — endpoints return success/stub metadata; **not** real Oracle |
+| 2 Admin Semantic | **[Pass — partial]** — CRUD in memory; **not** durable semantic layer |
+| 3 User Ask Data | **[Pass — partial]** — response shape matches; SQL/rows **hardcoded** |
+| 4 Dashboard from chat | **[Pass — partial]** — in-memory create/list; **not** wired to real chat output |
+| 5 AI dashboard edit | **[Pass — partial]** — simplified version bump; **not** full preview/diff/rollback UX |
+
 ## Story 1: Admin Connect Oracle
 ### Given
 - Admin is authenticated.

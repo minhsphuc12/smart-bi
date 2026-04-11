@@ -1,5 +1,20 @@
 # Smart BI Technical Design
 
+## As-built vs this document
+
+**Status legend:** **[Done]** = matches design direction in code · **[Partial]** = stub or simplified · **[To do]** = not implemented as described
+
+| Topic | Status | Notes |
+|-------|--------|--------|
+| Monorepo layout (`apps/web`, `apps/api`, `packages/shared`) | **[Done]** | |
+| Docker Compose Postgres + Redis | **[Done]** | API does not yet persist domain data to Postgres |
+| Router modules listed below | **[Partial]** | Endpoints exist; many use in-memory stores |
+| Auth (JWT + RBAC enforcement on routes) | **[To do]** | Dev login returns fixed token; no middleware guards |
+| Oracle connectivity, introspection, NL2SQL execution | **[To do]** | Stubs / hardcoded paths |
+| SQL safety (AST, allowlist, row limits) | **[To do]** | Described below; not wired in `chat` |
+| AI router real providers | **[To do]** | `run_task` is simulated |
+| Dashboard persistence | **[Partial]** | In-memory lists in router module |
+
 ## Repository layout
 
 | Path | Responsibility |
@@ -124,3 +139,5 @@ Each profile includes:
 - **Local API**: Python 3.12 or 3.13 recommended; run with `uvicorn app.main:app`.
 - **Observability**: HTTP request logging middleware is attached in `main.py`; extend with structured metrics and AI token/cost counters per task profile for production.
 - **Evolution**: Replace stubbed or simplified chat/dashboard paths with full NL2SQL + spec validation while keeping response contracts stable for the web client.
+
+**[To do]** items aligned with roadmap: Postgres-backed metadata, credential encryption, real Oracle driver usage, SQL policy engine, provider SDK integration, and web UI per [UX roadmap](./02-ux-roadmap.md).

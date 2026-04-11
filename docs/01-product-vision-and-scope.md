@@ -1,5 +1,14 @@
 # Smart BI MVP Vision and Scope
 
+## Implementation status (product doc)
+
+This file states **intent and scope**, not build progress. For engineering phase status see [Technical Roadmap](./03-technical-roadmap.md). For UX build status see [User Experience](./02-ux-roadmap.md).
+
+| Area | Status |
+|------|--------|
+| Vision, problem, MVP goals, out of scope | **[Done]** — documented baseline |
+| Success metrics | **[To do]** — targets to measure in UAT / post-MVP instrumentation |
+
 ## Vision
 Build a Smart BI platform where business users can ask questions in natural language, get reliable answers with traceable SQL, and create or edit dashboards through AI assistance.
 
