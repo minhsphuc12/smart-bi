@@ -1,0 +1,14 @@
+node_modules/
+.next/
+dist/
+build/
+__pycache__/
+.pytest_cache/
+.venv/
+venv/
+*.pyc
+.DS_Store
+.env
+.env.*
+coverage/
+apps/api/.mypy_cache/

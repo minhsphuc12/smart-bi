@@ -1,0 +1,12 @@
+{
+  "name": "smart-bi",
+  "private": true,
+  "workspaces": [
+    "apps/web",
+    "packages/shared"
+  ],
+  "scripts": {
+    "dev:web": "npm --workspace @smart-bi/web run dev",
+    "build:web": "npm --workspace @smart-bi/web run build"
+  }
+}
