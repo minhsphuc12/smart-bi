@@ -498,10 +498,14 @@ export default function AdminConsole() {
         <h1 style={{ margin: 0 }}>Admin console</h1>
         <p style={{ margin: 0, color: "var(--text-muted)", maxWidth: 820 }}>
           Manage database connections (Oracle, PostgreSQL, MySQL), semantic metadata, and AI routing
-          profiles. Connections are persisted as JSON on the API host (default path{" "}
-          <span className="mono">apps/api/data/connections.json</span>). Passwords are stored in plaintext in
-          that file for this MVP. Set <span className="mono">SMART_BI_CONNECTIONS_FILE</span> to use a
-          different path.
+          profiles. Connections, semantic layer, and AI routing are persisted as JSON on the API host
+          (defaults: <span className="mono">apps/api/data/connections.json</span>,{" "}
+          <span className="mono">apps/api/data/semantic.json</span>,{" "}
+          <span className="mono">apps/api/data/ai_routing.json</span>). Passwords are stored in plaintext in
+          the connections file for this MVP. Override paths with{" "}
+          <span className="mono">SMART_BI_CONNECTIONS_FILE</span>,{" "}
+          <span className="mono">SMART_BI_SEMANTIC_FILE</span>, or{" "}
+          <span className="mono">SMART_BI_AI_ROUTING_FILE</span>.
         </p>
       </header>
 
