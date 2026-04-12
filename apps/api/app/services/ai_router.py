@@ -1,9 +1,8 @@
-from app.routers.admin_ai_routing import profiles
+from app.routers.admin_ai_routing import get_profile_for_task
 
 
 def route_task(task: str) -> dict:
-    default_profile = {"provider": "openai", "model": "gpt-4o-mini", "temperature": 0.1, "max_tokens": 1000}
-    return profiles.get(task, default_profile)
+    return get_profile_for_task(task)
 
 
 def run_task(task: str, prompt: str) -> dict:

@@ -68,6 +68,35 @@ def test_admin_connections_persist_and_update() -> None:
     assert test_res.status_code in (200, 400)
 
 
+def test_admin_semantic_persisted_to_file() -> None:
+    from app.services import semantic_store
+
+    created = client.post("/admin/semantic/tables", json={"name": "orders", "description": "Fact table"})
+    assert created.status_code == 200
+    disk = semantic_store.load_semantic()
+    assert len(disk["tables"]) == 1
+    assert disk["tables"][0]["name"] == "orders"
+
+
+def test_admin_ai_routing_persisted_to_file() -> None:
+    from app.services import ai_routing_store
+
+    body = {
+        "task": "sql_gen",
+        "provider": "openai",
+        "model": "gpt-4o-mini",
+        "temperature": 0.11,
+        "max_tokens": 900,
+        "timeout": 30,
+        "cost_limit": 1.0,
+    }
+    updated = client.post("/admin/ai-routing/profiles", json=body)
+    assert updated.status_code == 200
+    disk = ai_routing_store.load_profiles()
+    assert disk["sql_gen"]["temperature"] == 0.11
+    assert disk["sql_gen"]["max_tokens"] == 900
+
+
 def test_dashboard_create_and_edit() -> None:
     create = client.post("/dashboards", json={"title": "Sales", "prompt": "Create revenue dashboard"})
     assert create.status_code == 200
