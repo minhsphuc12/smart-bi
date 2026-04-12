@@ -33,7 +33,7 @@ Use **`apps/api/.env.example`** as a template. **Never commit** `.env` (it stays
 
 ### LLM API keys (server-side only)
 
-Ask Data with a **`connection_id`** uses `sql_gen` and `answer_gen` profiles from **Admin → AI routing**. When the matching provider has an API key in the environment, the API calls the vendor over HTTPS; otherwise it falls back to **simulated** router text and a **heuristic** SQL preview.
+Ask Data **requires** a **`connection_id`** (an Admin datasource). It uses `sql_gen` and `answer_gen` profiles from **Admin → AI routing**. When the matching provider has an API key in the environment, the API calls the vendor over HTTPS; otherwise it falls back to **simulated** router text and a **heuristic** SQL preview against that connection.
 
 | Provider | Env vars (first match wins) | Optional base URL |
 |----------|------------------------------|-------------------|
@@ -84,7 +84,7 @@ All notable changes to this project are documented in this section. Versions fol
 ### [Unreleased]
 
 - API: load optional **`.env`** files via `python-dotenv` (`repo/.env` then `apps/api/.env`); add `apps/api/.env.example`.
-- Ask Data: NL2SQL with **LLM** + **semantic layer** + live schema when `connection_id` is set and provider API keys exist; **sqlglot** policy (read-only SELECT, table allowlist, row cap); heuristic preview fallback; Ask UI refresh (sidebar, chips, CSV export, copy answer, keyboard submit).
+- Ask Data: **`connection_id` required** (no bundled demo DB); NL2SQL with **LLM** + **semantic layer** + live schema when provider API keys exist; **sqlglot** policy (read-only SELECT, table allowlist, row cap); heuristic preview fallback; Ask UI picks a configured datasource by default.
 
 ### [0.1.0] — 2026-04-11
 

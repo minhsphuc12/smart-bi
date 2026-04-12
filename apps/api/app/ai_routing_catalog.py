@@ -11,9 +11,9 @@ MODELS_BY_PROVIDER: Final[dict[str, tuple[str, ...]]] = {
         "o3-mini",
     ),
     "anthropic": (
-        "claude-sonnet-4-20250514",
-        "claude-opus-4-20250514",
-        "claude-3-5-haiku-20241022",
+        "claude-sonnet-4-6",
+        "claude-opus-4-6",
+        "claude-haiku-4-5",
     ),
     "google": (
         "gemini-2.5-flash",

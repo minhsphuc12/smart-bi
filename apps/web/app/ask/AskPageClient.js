@@ -199,6 +199,18 @@ export default function AskPageClient() {
   }, [loadConnections]);
 
   useEffect(() => {
+    if (!connections.length) {
+      setConnectionId("");
+      return;
+    }
+    setConnectionId((prev) => {
+      if (prev === "") return String(connections[0].id);
+      const stillThere = connections.some((c) => String(c.id) === prev);
+      return stillThere ? prev : String(connections[0].id);
+    });
+  }, [connections]);
+
+  useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [messages, loading]);
 
@@ -217,15 +229,16 @@ export default function AskPageClient() {
     e?.preventDefault?.();
     const trimmed = question.trim();
     if (!trimmed) return;
+    if (connectionId === "" || Number.isNaN(Number(connectionId))) {
+      setError("Choose a datasource connection in the sidebar.");
+      return;
+    }
     setError("");
     setLoading(true);
     setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: "user", text: trimmed }]);
     setQuestion("");
     try {
-      const body = { question: trimmed };
-      if (connectionId !== "") {
-        body.connection_id = Number(connectionId);
-      }
+      const body = { question: trimmed, connection_id: Number(connectionId) };
       const data = await apiRequest("/chat/questions", { method: "POST", body });
       setMessages((prev) => [
         ...prev,
@@ -282,9 +295,9 @@ export default function AskPageClient() {
             <div className="stack" style={{ gap: 8 }}>
               <h1 style={{ margin: 0 }}>Ask Data</h1>
               <p style={{ margin: 0, color: "var(--text-muted)", maxWidth: 720 }}>
-                Ask in natural language, inspect a grounded narrative, then audit SQL and tabular evidence. With a
-                connection, the API runs read-only heuristics (COUNT, SUM, column-aware SELECT + LIMIT, optional
-                recency ordering)—full NL2SQL and LLM narratives remain on the roadmap.
+                Ask in natural language against a configured datasource, inspect the narrative, then audit SQL and
+                tabular evidence. The API runs read-only NL2SQL (when LLM keys are set) or heuristic previews (COUNT,
+                SUM, column-aware SELECT + LIMIT)—never writes.
               </p>
             </div>
             <div className="row" style={{ gap: 8, flexShrink: 0 }}>
@@ -314,8 +327,8 @@ export default function AskPageClient() {
             {messages.length === 0 && !loading ? (
               <div className="stack" style={{ gap: 16 }}>
                 <div className="empty" style={{ background: "#fff" }}>
-                  No questions yet. Pick a suggestion or type your own. Without a connection you get a deterministic demo
-                  grid; with a connection you get a capped live preview from your warehouse.
+                  No questions yet. Pick a suggestion or type your own. Answers always use the datasource you select in
+                  the sidebar (capped, read-only).
                 </div>
                 <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
                   {SUGGESTIONS.map((s) => (
@@ -365,7 +378,11 @@ export default function AskPageClient() {
                 Press <kbd className="mono">⌘</kbd> + <kbd className="mono">Enter</kbd> (or Ctrl+Enter) to send. SQL stays
                 collapsed until you expand it.
               </p>
-              <button className="btn btn-primary" type="submit" disabled={loading || !question.trim()}>
+              <button
+                className="btn btn-primary"
+                type="submit"
+                disabled={loading || !question.trim() || connectionId === ""}
+              >
                 {loading ? "Working…" : "Ask"}
               </button>
             </div>
@@ -377,7 +394,7 @@ export default function AskPageClient() {
           <div className="field" style={{ marginBottom: 0 }}>
             <label htmlFor="conn">Connection</label>
             <select id="conn" value={connectionId} onChange={(e) => setConnectionId(e.target.value)} disabled={loading}>
-              <option value="">Demo dataset (no DB)</option>
+              <option value="">{connections.length ? "Select a connection…" : "No connections — add one in Admin"}</option>
               {connections.map((c) => (
                 <option key={c.id} value={String(c.id)}>
                   #{c.id} · {c.name} ({c.source_type})

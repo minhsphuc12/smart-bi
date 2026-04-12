@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 from fastapi.testclient import TestClient
 
 from app.main import app
@@ -19,8 +21,34 @@ def test_login() -> None:
     assert data["role"] == "admin"
 
 
-def test_ask_question_contract() -> None:
+def test_ask_question_requires_connection_id() -> None:
     response = client.post("/chat/questions", json={"question": "Revenue by day?"})
+    assert response.status_code == 422
+
+
+@patch("app.routers.chat.nl2sql_pipeline.answer_question")
+def test_ask_question_contract(mock_answer) -> None:
+    mock_answer.return_value = {
+        "answer": "Synthetic answer for contract test.",
+        "sql": "SELECT 1 AS one",
+        "columns": ["one"],
+        "rows": [[1]],
+        "confidence": 0.9,
+        "warnings": [],
+        "evidence": {"query_kind": "llm_sql", "row_count": 1, "execution_ms": 1},
+        "meta": {
+            "sql_model": "stub",
+            "answer_model": "stub",
+            "sql_task_note": "",
+            "answer_task_note": "",
+            "sql_live": False,
+            "answer_live": False,
+        },
+    }
+    response = client.post(
+        "/chat/questions",
+        json={"question": "Revenue by day?", "connection_id": 1},
+    )
     assert response.status_code == 200
     data = response.json()
     assert "answer" in data
@@ -28,7 +56,8 @@ def test_ask_question_contract() -> None:
     assert "columns" in data
     assert "rows" in data
     assert "evidence" in data
-    assert data["evidence"].get("query_kind") == "demo"
+    assert data["evidence"].get("query_kind") == "llm_sql"
+    mock_answer.assert_called_once_with(1, "Revenue by day?")
 
 
 def test_admin_connections_persist_and_update() -> None:

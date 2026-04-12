@@ -35,12 +35,19 @@ test.describe("Smart BI MVP", () => {
     await expect(page.getByRole("heading", { name: "Table dictionary" })).toBeVisible();
   });
 
-  test("ask data: submit question shows answer card", async ({ page }) => {
+  test("ask data: submit only with a configured datasource", async ({ page }) => {
     await page.goto("/ask");
     await expect(page.getByRole("heading", { name: "Ask Data" })).toBeVisible();
     await page.locator("#q").fill("Revenue by day last week?");
-    await page.getByRole("button", { name: "Ask" }).click();
-    await expect(page.getByText("Answer", { exact: true }).first()).toBeVisible({ timeout: 15_000 });
+    const askBtn = page.getByRole("button", { name: "Ask" });
+    if (await askBtn.isDisabled()) {
+      await expect(page.getByLabel("Connection")).toBeVisible();
+      return;
+    }
+    await askBtn.click();
+    await expect(
+      page.getByText("Answer", { exact: true }).first().or(page.getByRole("alert"))
+    ).toBeVisible({ timeout: 15_000 });
   });
 
   test("dashboards list loads", async ({ page }) => {

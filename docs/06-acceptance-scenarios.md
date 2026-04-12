@@ -6,7 +6,7 @@
 |-------|--------|
 | 1 Admin Connect datasource | **[Pass — partial]** — **real** `POST …/test` and `POST …/introspect` against a reachable **Oracle, PostgreSQL, or MySQL** instance; results persisted in **process + JSON** (not enterprise metadata DB) |
 | 2 Admin Semantic | **[Pass — partial]** — CRUD **durable** via `semantic.json`; **no** versioning |
-| 3 User Ask Data | **[Pass — partial]** — without `connection_id`: demo SQL/rows + template demo narrative; **with** `connection_id`: **NL2SQL** when provider **API keys** are set (semantic + physical schema → LLM → **sqlglot** allowlist + row cap → execute → LLM answer), else **heuristic** preview; `evidence.query_kind` includes **`llm_sql`** / **`llm_sql_heuristic_fallback`** / **`demo`** |
+| 3 User Ask Data | **[Pass — partial]** — **`connection_id` required**; **NL2SQL** when provider **API keys** are set (semantic + physical schema → LLM → **sqlglot** allowlist + row cap → execute → LLM answer), else **heuristic** preview; `evidence.query_kind` is **`llm_sql`** or **`llm_sql_heuristic_fallback`** |
 | 4 Dashboard from chat | **[Pass — partial]** — in-memory create/list/detail in API; UI can create from prompts; **lost on API restart** |
 | 5 AI dashboard edit | **[Pass — partial]** — version list grows on edit; preview in API response; **no** full diff/rollback UX |
 

@@ -64,7 +64,7 @@ Routers registered in `apps/api/app/main.py`:
 | `admin_connections` | `/admin/connections` | Oracle profiles, test, introspect |
 | `admin_semantic` | `/admin/semantic` | Tables, relationships, dictionary, metrics |
 | `admin_ai_routing` | `/admin/ai-routing` | Catalog (`GET …/catalog`), profiles CRUD, `POST …/validate` |
-| `chat` | `/chat` | Ask data (`POST /chat/questions`) — with `connection_id`: **NL2SQL** (semantic + schema → LLM SQL → policy → execute) + **LLM answer** when keys configured; else heuristic preview |
+| `chat` | `/chat` | Ask data (`POST /chat/questions`) — **`connection_id` required**: **NL2SQL** (semantic + schema → LLM SQL → policy → execute) + **LLM answer** when keys configured; else heuristic preview |
 | `dashboards` | `/dashboards` | CRUD, AI edit, versions |
 
 Health: `GET /health`.
@@ -94,7 +94,7 @@ sequenceDiagram
   W-->>U: Answer card
 ```
 
-**As-built today:** If `connection_id` is **omitted**, SQL/rows stay **demo placeholders** and `evidence.query_kind` is **`demo`** (template narrative). If `connection_id` is set, **`nl2sql_pipeline`** loads **semantic.json** + cached/introspected **physical schema**, calls **`run_task("sql_gen", …)`** with a strict system prompt, extracts SQL, validates via **`sql_policy.prepare_readonly_select`** (`sqlglot`, allowlisted physical tables, CTE names exempt from physical match, row cap), executes read-only via SQLAlchemy `text()`, then calls **`run_task("answer_gen", …)`** with question + SQL + JSON sample rows for the user-facing answer. On missing API keys, invalid SQL, or execution errors, the pipeline **falls back** to **`preview_for_question`** / `preview_select` heuristics and sets `evidence.query_kind` to **`llm_sql_heuristic_fallback`**. `meta.sql_live` / `meta.answer_live` indicate whether vendor HTTP calls succeeded for each task.
+**As-built today:** `connection_id` is **required** (no demo placeholder path). **`nl2sql_pipeline`** loads **semantic.json** + cached/introspected **physical schema**, calls **`run_task("sql_gen", …)`** with a strict system prompt, extracts SQL, validates via **`sql_policy.prepare_readonly_select`** (`sqlglot`, allowlisted physical tables, CTE names exempt from physical match, row cap), executes read-only via SQLAlchemy `text()`, then calls **`run_task("answer_gen", …)`** with question + SQL + JSON sample rows for the user-facing answer. On missing API keys, invalid SQL, or execution errors, the pipeline **falls back** to **`preview_for_question`** / `preview_select` heuristics and sets `evidence.query_kind` to **`llm_sql_heuristic_fallback`**. `meta.sql_live` / `meta.answer_live` indicate whether vendor HTTP calls succeeded for each task.
 
 ## AI Task Profiles
 - `sql_gen`: SQL generation and SQL repair.
@@ -138,7 +138,7 @@ Each profile includes:
   - `GET` `/admin/ai-routing/catalog` — allowlisted providers and models (`app/ai_routing_catalog.py`)
   - `GET`/`POST`/`PUT` `/admin/ai-routing/profiles`; `POST` `/admin/ai-routing/validate`
 - User:
-  - `POST` `/chat/questions` — body: `{ "question": string, "connection_id"?: number }` — response adds **`evidence`** (`query_kind`, `table`, `row_count`, `execution_ms`, …) and `meta.sql_task_note` / `meta.answer_task_note` (simulated router stubs).
+  - `POST` `/chat/questions` — body: `{ "question": string, "connection_id": number }` — response adds **`evidence`** (`query_kind`, `table`, `row_count`, `execution_ms`, …) and `meta.sql_task_note` / `meta.answer_task_note` (simulated router stubs).
   - `GET`/`POST` `/dashboards`; `GET` `/dashboards/{id}`; `POST` `/dashboards/{id}/ai-edit`; `GET` `/dashboards/{id}/versions`
 
 Connection payloads support `source_type`: `oracle` | `postgresql` | `mysql` (see `ConnectionPayload` in `admin_connections.py`).

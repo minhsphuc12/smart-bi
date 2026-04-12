@@ -18,27 +18,6 @@ def _format_cell(value: Any) -> str:
     return s if len(s) <= 120 else s[:117] + "…"
 
 
-def compose_demo_narrative(question: str, columns: list[str], rows: list[list[Any]]) -> str:
-    q = question.strip() or "your question"
-    if not rows:
-        return (
-            f"For “{q}”, the demo dataset returns no rows. "
-            "Connect a datasource to preview live tables (read-only, row-capped)."
-        )
-    preview_cols = ", ".join(columns[:6])
-    if len(columns) > 6:
-        preview_cols += ", …"
-    first = rows[0]
-    parts = [_format_cell(v) for v in first[:4]]
-    if len(first) > 4:
-        parts.append("…")
-    return (
-        f"Demo answer for “{q}”: the sample grid has {len(rows)} row(s) and columns {preview_cols}. "
-        f"Example values from the first row: {', '.join(parts)}. "
-        "This uses bundled placeholder SQL until you attach a connection for a live preview."
-    )
-
-
 def compose_live_narrative(
     question: str,
     table_name: str,
@@ -84,37 +63,6 @@ def compose_live_narrative(
         f"Live preview from `{table_name}` for “{q}”: **{n}** row(s) (capped). "
         f"{subset}{col_note}.{first_bits}"
     )
-
-
-def confidence_for(query_kind: str, connection_id: int | None, had_column_hints: bool) -> float:
-    if connection_id is None:
-        return 0.88
-    if query_kind == "count":
-        return 0.78
-    if query_kind == "sum":
-        return 0.76
-    if had_column_hints:
-        return 0.68
-    return 0.58
-
-
-def warnings_for(
-    connection_id: int | None,
-    query_kind: str,
-    table_name: str,
-    used_fallback: bool,
-) -> list[str]:
-    out: list[str] = []
-    if connection_id is None:
-        out.append("Demo mode: SQL and rows are illustrative; connect a datasource for live evidence.")
-        return out
-    if used_fallback:
-        out.append("Heuristic query failed partway; fell back to a plain SELECT with LIMIT.")
-    out.append(
-        f"Heuristic Ask Data on `{table_name}` ({query_kind}). "
-        "Full NL2SQL + policy engine is not enabled yet; review SQL before sharing."
-    )
-    return out
 
 
 def run_connected_question(
@@ -169,31 +117,3 @@ def run_connected_question(
         "row_count": len(rows),
     }
     return sql, columns, rows, evidence
-
-
-def narrative_and_meta(
-    *,
-    question: str,
-    connection_id: int | None,
-    columns: list[str],
-    rows: list[list[Any]],
-    evidence: dict[str, Any],
-) -> tuple[str, float, list[str]]:
-    qk = str(evidence.get("query_kind") or "scan")
-    table = str(evidence.get("table") or "unknown")
-    sel = evidence.get("selected_columns")
-    selected_columns = list(sel) if isinstance(sel, list) else None
-    used_fallback = bool(evidence.get("used_fallback"))
-    had_hints = bool(selected_columns) and qk == "scan"
-
-    if connection_id is None:
-        answer = compose_demo_narrative(question, columns, rows)
-    else:
-        answer = compose_live_narrative(
-            question, table, qk, columns, rows, selected_columns
-        )
-
-    conf = confidence_for(qk, connection_id, had_hints)
-    warns = warnings_for(connection_id, qk, table, used_fallback)
-
-    return answer, conf, warns

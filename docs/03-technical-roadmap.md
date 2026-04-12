@@ -55,9 +55,8 @@ flowchart LR
 
 ## Phase 5 - Ask Data
 - **[Partial]** Semantic context for NL2SQL — **`semantic.json`** is injected into the **`sql_gen`** prompt together with introspected physical schema (not yet joined to a separate retrieval/RAG service).
-- **[Partial]** **Demo path** (no `connection_id`): hardcoded sample SQL/rows + demo narrative templates.
-- **[Partial]** **`connection_id` path**: primary flow **`nl2sql_pipeline`** (LLM SQL → **sqlglot** policy → execute); **heuristic** `preview_for_question` / `preview_select` as fallback; **`evidence`** distinguishes LLM vs fallback.
-- **[Partial]** Narrative — **`answer_gen`** LLM when configured; else template text for demo or heuristic fallback rows.
+- **[Partial]** **`connection_id` required** for Ask: primary flow **`nl2sql_pipeline`** (LLM SQL → **sqlglot** policy → execute); **heuristic** `preview_for_question` / `preview_select` as fallback; **`evidence`** distinguishes LLM vs fallback.
+- **[Partial]** Narrative — **`answer_gen`** LLM when configured; else template text for heuristic fallback rows.
 - **[Done]** Unified response payload for frontend (`AskPageClient`) including `evidence` and `meta.sql_live` / `meta.answer_live`.
 
 ## Phase 6 - Dashboard AI
