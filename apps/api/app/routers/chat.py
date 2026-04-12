@@ -2,8 +2,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.exc import SQLAlchemyError
 
-from app.routers.admin_connections import get_connection_record
-from app.services import db_engine
+from app.services import ask_data, nl2sql_pipeline
 from app.services.ai_router import run_task
 
 router = APIRouter(prefix="/chat", tags=["chat"])
@@ -13,79 +12,63 @@ class QuestionPayload(BaseModel):
     question: str
     connection_id: int | None = Field(
         default=None,
-        description="When set, runs a read-only preview query against this connection using cached schema.",
+        description="When set, runs NL2SQL (LLM + semantic + schema) with read-only policy, or heuristic preview if LLM keys are missing.",
     )
 
 
 @router.post("/questions")
 def ask_question(payload: QuestionPayload) -> dict:
-    sql_result = run_task("sql_gen", payload.question)
-    answer_result = run_task("answer_gen", payload.question)
-
-    if payload.connection_id is None:
-        sql = "SELECT order_date, SUM(amount) AS revenue FROM sales_orders GROUP BY order_date FETCH FIRST 100 ROWS ONLY"
-        columns = ["order_date", "revenue"]
-        rows = [
-            ["2026-04-01", 125000],
-            ["2026-04-02", 132500],
-        ]
-        warnings: list[str] = []
-    else:
-        conn = get_connection_record(payload.connection_id)
-
-        tables = db_engine.get_introspection_cache(payload.connection_id)
-        if not tables:
-            try:
-                engine = db_engine.make_engine(conn)
-                try:
-                    tables = db_engine.introspect_schema(engine, conn["source_type"])
-                finally:
-                    engine.dispose()
-                db_engine.set_introspection_cache(payload.connection_id, tables)
-            except ValueError as exc:
-                raise HTTPException(status_code=400, detail=str(exc)) from exc
-            except SQLAlchemyError as exc:
-                raise HTTPException(
-                    status_code=400, detail=f"Could not introspect database: {exc}"
-                ) from exc
-
-        if not tables:
-            raise HTTPException(
-                status_code=400,
-                detail="No user tables visible for this connection. Check grants or schema.",
-            )
-
-        table = db_engine.pick_table_for_question(payload.question, tables)
-        if table is None:
-            raise HTTPException(status_code=400, detail="Could not choose a table to preview.")
-
+    if payload.connection_id is not None:
         try:
-            engine = db_engine.make_engine(conn)
-            try:
-                sql, columns, rows = db_engine.preview_select(
-                    engine, conn["source_type"], table, row_limit=50
-                )
-            finally:
-                engine.dispose()
+            return nl2sql_pipeline.answer_question(payload.connection_id, payload.question)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         except SQLAlchemyError as exc:
             raise HTTPException(status_code=400, detail=f"Query failed: {exc}") from exc
 
-        warnings = [
-            f"Live read-only preview (max 50 rows) from {table['name']}. "
-            "NL2SQL is not enabled yet; the chosen table matches your question heuristically or defaults to the first table."
-        ]
+    sql_result = run_task("sql_gen", payload.question)
+    answer_result = run_task("answer_gen", payload.question)
+
+    sql = (
+        "SELECT order_date, SUM(amount) AS revenue FROM sales_orders "
+        "GROUP BY order_date FETCH FIRST 100 ROWS ONLY"
+    )
+    columns = ["order_date", "revenue"]
+    rows = [
+        ["2026-04-01", 125000],
+        ["2026-04-02", 132500],
+    ]
+    evidence: dict = {
+        "query_kind": "demo",
+        "table": "sales_orders (demo)",
+        "selected_columns": None,
+        "used_fallback": False,
+        "execution_ms": 0,
+        "row_count": len(rows),
+    }
+
+    answer, confidence, warnings = ask_data.narrative_and_meta(
+        question=payload.question,
+        connection_id=None,
+        columns=columns,
+        rows=rows,
+        evidence=evidence,
+    )
 
     return {
-        "answer": answer_result["output"],
+        "answer": answer,
         "sql": sql,
         "columns": columns,
         "rows": rows,
-        "confidence": 0.82 if payload.connection_id is None else 0.55,
+        "confidence": confidence,
         "warnings": warnings,
+        "evidence": evidence,
         "meta": {
             "sql_model": sql_result["model"],
             "answer_model": answer_result["model"],
+            "sql_task_note": sql_result.get("output") or "",
+            "answer_task_note": answer_result.get("output") or "",
+            "sql_live": bool(sql_result.get("live")),
+            "answer_live": bool(answer_result.get("live")),
         },
     }

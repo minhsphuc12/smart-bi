@@ -12,8 +12,8 @@
 | Router modules listed below | **[Partial]** | Endpoints implemented; dashboards still **in-memory** in `dashboards` router. |
 | Auth (JWT + RBAC enforcement on routes) | **[To do]** | `POST /auth/login` returns dev token + role heuristic; **no** verification middleware on routers. |
 | Multi-engine connectivity | **[Partial]** | `app/services/db_engine.py`: **Oracle**, **PostgreSQL**, **MySQL** URLs, ping, introspection, `preview_select` (read-only `LIMIT`). Used by admin test/introspect and chat when `connection_id` set. |
-| NL2SQL + SQL safety (AST, allowlist) | **[To do]** | Chat uses **heuristic table pick** + fixed `preview_select`; no generated-SQL policy engine. |
-| AI router real providers | **[To do]** | `run_task` returns **simulated** output; profiles drive displayed provider/model. |
+| NL2SQL + SQL safety (AST, allowlist) | **[Partial]** | With `connection_id`: **`nl2sql_pipeline`** calls LLM `sql_gen`, then **`sql_policy`** (`sqlglot`) for read-only SELECT + table allowlist + row cap; heuristic **`preview_for_question`** if LLM SQL fails validation or execution. |
+| AI router real providers | **[Partial]** | **`llm_client`** + **`httpx`**: OpenAI-compatible chat, Anthropic Messages, Gemini `generateContent` when env API keys set; otherwise **`run_task`** stays simulated. |
 | Dashboard persistence | **[Partial]** | In-process lists in `app/routers/dashboards.py` (lost on restart). |
 
 ### File-backed admin data (as-built)
@@ -64,7 +64,7 @@ Routers registered in `apps/api/app/main.py`:
 | `admin_connections` | `/admin/connections` | Oracle profiles, test, introspect |
 | `admin_semantic` | `/admin/semantic` | Tables, relationships, dictionary, metrics |
 | `admin_ai_routing` | `/admin/ai-routing` | Catalog (`GET …/catalog`), profiles CRUD, `POST …/validate` |
-| `chat` | `/chat` | Ask data (`POST /chat/questions`) — optional `connection_id` for live DB preview |
+| `chat` | `/chat` | Ask data (`POST /chat/questions`) — with `connection_id`: **NL2SQL** (semantic + schema → LLM SQL → policy → execute) + **LLM answer** when keys configured; else heuristic preview |
 | `dashboards` | `/dashboards` | CRUD, AI edit, versions |
 
 Health: `GET /health`.
@@ -94,7 +94,7 @@ sequenceDiagram
   W-->>U: Answer card
 ```
 
-**As-built today:** `sql_gen` / `answer_gen` still produce **simulated** strings for `meta` and `answer`. If `connection_id` is **omitted**, SQL/rows are **demo placeholders**. If `connection_id` is set, the API loads or introspects tables, picks a table (keyword overlap heuristic or first table), runs **`preview_select`** (`SELECT` + `LIMIT` 50) via SQLAlchemy, and returns real `sql` / `columns` / `rows` with a **warning** that NL2SQL is not enabled.
+**As-built today:** If `connection_id` is **omitted**, SQL/rows stay **demo placeholders** and `evidence.query_kind` is **`demo`** (template narrative). If `connection_id` is set, **`nl2sql_pipeline`** loads **semantic.json** + cached/introspected **physical schema**, calls **`run_task("sql_gen", …)`** with a strict system prompt, extracts SQL, validates via **`sql_policy.prepare_readonly_select`** (`sqlglot`, allowlisted physical tables, CTE names exempt from physical match, row cap), executes read-only via SQLAlchemy `text()`, then calls **`run_task("answer_gen", …)`** with question + SQL + JSON sample rows for the user-facing answer. On missing API keys, invalid SQL, or execution errors, the pipeline **falls back** to **`preview_for_question`** / `preview_select` heuristics and sets `evidence.query_kind` to **`llm_sql_heuristic_fallback`**. `meta.sql_live` / `meta.answer_live` indicate whether vendor HTTP calls succeeded for each task.
 
 ## AI Task Profiles
 - `sql_gen`: SQL generation and SQL repair.
@@ -138,7 +138,7 @@ Each profile includes:
   - `GET` `/admin/ai-routing/catalog` — allowlisted providers and models (`app/ai_routing_catalog.py`)
   - `GET`/`POST`/`PUT` `/admin/ai-routing/profiles`; `POST` `/admin/ai-routing/validate`
 - User:
-  - `POST` `/chat/questions` — body: `{ "question": string, "connection_id"?: number }`
+  - `POST` `/chat/questions` — body: `{ "question": string, "connection_id"?: number }` — response adds **`evidence`** (`query_kind`, `table`, `row_count`, `execution_ms`, …) and `meta.sql_task_note` / `meta.answer_task_note` (simulated router stubs).
   - `GET`/`POST` `/dashboards`; `GET` `/dashboards/{id}`; `POST` `/dashboards/{id}/ai-edit`; `GET` `/dashboards/{id}/versions`
 
 Connection payloads support `source_type`: `oracle` | `postgresql` | `mysql` (see `ConnectionPayload` in `admin_connections.py`).
@@ -158,4 +158,15 @@ Connection payloads support `source_type`: `oracle` | `postgresql` | `mysql` (se
 
 **[To do]** items aligned with roadmap: Postgres-backed metadata, credential encryption at rest, NL2SQL + **SQL policy engine** on any generated text, provider SDK integration, durable dashboards, enforced JWT/RBAC, and semantic **versioning**.
 
-**Implemented recently (summary):** SQLAlchemy-based engine layer for three DB kinds; file persistence for admin stores; admin AI catalog; chat **live preview** path; Next.js flows for admin / ask / dashboards; Playwright smoke tests (`apps/web/e2e/app.spec.js`).
+**Implemented recently (summary):** SQLAlchemy-based engine layer for three DB kinds; file persistence for admin stores; admin AI catalog; **`llm_client`** (OpenAI / Anthropic / Google HTTP); Ask Data **`nl2sql_pipeline`** + **`sql_policy`** (`sqlglot`) + heuristic fallback; Next.js flows for admin / ask / dashboards; Playwright smoke tests (`apps/web/e2e/app.spec.js`).
+
+### LLM credentials (operations)
+
+| Variable | Purpose |
+|----------|---------|
+| `SMART_BI_OPENAI_API_KEY` / `OPENAI_API_KEY` | OpenAI or OpenAI-compatible API |
+| `SMART_BI_OPENAI_BASE_URL` / `OPENAI_API_BASE` | Optional chat-completions base (default OpenAI cloud) |
+| `SMART_BI_ANTHROPIC_API_KEY` / `ANTHROPIC_API_KEY` | Anthropic Messages API |
+| `SMART_BI_GOOGLE_API_KEY` / `GOOGLE_API_KEY` / `GEMINI_API_KEY` | Google Gemini `generateContent` |
+
+Keys are read from the **process environment** after optional **`.env` files** are loaded at API startup: repository root `.env` then `apps/api/.env` (see `app/main.py`; `python-dotenv`). Do not store secrets in `apps/api/data/*.json`.

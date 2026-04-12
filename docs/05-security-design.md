@@ -9,8 +9,8 @@ This document is the **target security model** for MVP. Current code is a **deve
 | JWT authentication | Short-lived tokens | **[Partial]** — `POST /auth/login` returns a dev token; **no** signing/verification middleware |
 | RBAC on admin vs user routes | Enforced server-side | **[To do]** — not enforced on routers |
 | Credential protection (no raw secrets to client, encryption at rest) | Required | **[To do]** — API lists mask password as `***`; **passwords are stored in plaintext** in `apps/api/data/connections.json` (or override path) for local dev — **must not ship to production** without encryption/KMS |
-| SQL safety policy | Parser + allowlist + limits | **[To do]** — not implemented in execution path |
-| AI input/output validation | Sanitization and boundaries | **[Partial]** — minimal; provider calls simulated |
+| SQL safety policy | Parser + allowlist + limits | **[Partial]** — Ask Data with `connection_id`: **`sqlglot`** parse + forbidden-statement scan + physical **table allowlist** (CTE aliases exempt) + **row cap** before execution; not a full enterprise policy engine |
+| AI input/output validation | Sanitization and boundaries | **[Partial]** — LLM HTTP via **`httpx`** when env keys set; SQL output stripped of fences then validated; **no** prompt injection hardening beyond template boundaries |
 | Audit events and metrics | Login, changes, SQL rejections | **[To do]** |
 
 ## Security Objectives

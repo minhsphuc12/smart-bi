@@ -1,3 +1,18 @@
+"""Smart BI API — loads optional `apps/api/.env` then repo-root `.env` for local dev."""
+
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+# Monorepo root (smart-bi/) and API package root (apps/api/)
+_main_file = Path(__file__).resolve()
+_api_root = _main_file.parent.parent
+_repo_root = _api_root.parent
+
+# Shared defaults from repo root; apps/api/.env overrides for API-specific keys.
+load_dotenv(_repo_root / ".env", override=False)
+load_dotenv(_api_root / ".env", override=True)
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 

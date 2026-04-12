@@ -50,15 +50,15 @@ flowchart LR
 
 ## Phase 4 - AI Orchestration
 - **[Partial]** Task routing reads **persisted** profiles; `GET /admin/ai-routing/catalog` exposes allowlisted providers/models (`ai_routing_catalog.py`).
-- **[To do]** Real LLM/SDK calls (`run_task` still **simulated**).
-- **[To do]** Retry and fallback strategy; latency/cost tracking.
+- **[Partial]** Real LLM HTTP calls via **`llm_client`** + **`httpx`** when env API keys are set; otherwise `run_task` remains **simulated**.
+- **[To do]** Retry and fallback strategy; latency/cost tracking beyond basic `execution_ms` on Ask responses.
 
 ## Phase 5 - Ask Data
-- **[To do]** Retrieval of semantic context for true NL2SQL.
-- **[Partial]** **Demo path** (no `connection_id`): hardcoded sample SQL/rows.
-- **[Partial]** **Live preview path** (`connection_id`): read-only `preview_select` on chosen table (max 50 rows); warns that NL2SQL is not enabled.
-- **[Partial]** Narrative — simulated `answer_gen` output (not grounded on query results yet).
-- **[Done]** Unified response payload for frontend (`AskPageClient`).
+- **[Partial]** Semantic context for NL2SQL — **`semantic.json`** is injected into the **`sql_gen`** prompt together with introspected physical schema (not yet joined to a separate retrieval/RAG service).
+- **[Partial]** **Demo path** (no `connection_id`): hardcoded sample SQL/rows + demo narrative templates.
+- **[Partial]** **`connection_id` path**: primary flow **`nl2sql_pipeline`** (LLM SQL → **sqlglot** policy → execute); **heuristic** `preview_for_question` / `preview_select` as fallback; **`evidence`** distinguishes LLM vs fallback.
+- **[Partial]** Narrative — **`answer_gen`** LLM when configured; else template text for demo or heuristic fallback rows.
+- **[Done]** Unified response payload for frontend (`AskPageClient`) including `evidence` and `meta.sql_live` / `meta.answer_live`.
 
 ## Phase 6 - Dashboard AI
 - **[Partial]** Generate dashboard spec — simplified fixed spec + simulated `dashboard_gen`.

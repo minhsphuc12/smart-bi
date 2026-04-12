@@ -27,6 +27,8 @@ def test_ask_question_contract() -> None:
     assert "sql" in data
     assert "columns" in data
     assert "rows" in data
+    assert "evidence" in data
+    assert data["evidence"].get("query_kind") == "demo"
 
 
 def test_admin_connections_persist_and_update() -> None:

@@ -2,7 +2,7 @@
 
 This document describes the solution from an architecture perspective: capabilities, major components, integrations, and how they satisfy MVP goals. Detailed API and data shapes live in [Technical Design](./04-technical-design.md).
 
-**Implementation status:** Architecture below is **target**; the repo is **hybrid**. Admin **connections**, **semantic layer**, and **AI routing profiles** persist to **JSON files** under `apps/api/data/` (overridable via env — see [Technical Design](./04-technical-design.md)). **Ask Data** can run a **live read-only `SELECT … LIMIT`** against a configured connection when `connection_id` is supplied and schema is cached or introspected; **NL2SQL** and **SQL policy engine** are still future work. **Dashboards** remain **in-process memory** (lost on restart). **Postgres/Redis** from Docker Compose are **not** wired as the app metadata store yet. **LLM calls** are still **simulated** in `run_task`.
+**Implementation status:** Architecture below is **target**; the repo is **hybrid**. Admin **connections**, **semantic layer**, and **AI routing profiles** persist to **JSON files** under `apps/api/data/` (overridable via env — see [Technical Design](./04-technical-design.md)). **Ask Data** with `connection_id` runs **`nl2sql_pipeline`**: semantic + physical schema → LLM **`sql_gen`** (when API keys are set) → **`sqlglot`** read-only policy → execute → LLM **`answer_gen`**, with **heuristic fallback** if keys or SQL fail. **Dashboards** remain **in-process memory** (lost on restart). **Postgres/Redis** from Docker Compose are **not** wired as the app metadata store yet. **`run_task`** uses **real HTTPS** to vendors when env keys exist; otherwise it returns **simulated** stub text.
 
 ## 1. Purpose and scope
 
@@ -21,8 +21,8 @@ Out of scope for this view matches [Product Vision and Scope](./01-product-visio
 | Identity & roles | All users | JWT auth, `admin` / `user` RBAC | **[Partial]** — dev login only; **no** enforced RBAC |
 | Datasource lifecycle | Admin | Connection CRUD, test, introspection | **[Partial]** — **real** connectivity test + schema introspection via SQLAlchemy for **Oracle, PostgreSQL, and MySQL**; profiles persisted to JSON (not Postgres) |
 | Semantic governance | Admin | Tables, relationships, dictionary, metrics + versioning | **[Partial]** — CRUD + **file-backed** JSON; **no** semantic versioning |
-| Model governance | Admin | AI routing profiles per task | **[Partial]** — profiles **file-backed**; allowlisted providers/models via catalog; **no** real provider SDK calls |
-| Ask data | Business user | NL2SQL pipeline, safety policy, execution, narrative | **[Partial]** — without `connection_id`: demo SQL/rows; **with** `connection_id`: **read-only preview** on a heuristically chosen table (max 50 rows); narrative still **simulated** |
+| Model governance | Admin | AI routing profiles per task | **[Partial]** — profiles **file-backed**; allowlisted providers/models via catalog; **real** HTTPS calls when per-provider **env API keys** are set |
+| Ask data | Business user | NL2SQL pipeline, safety policy, execution, narrative | **[Partial]** — without `connection_id`: demo SQL/rows + demo narrative; **with** `connection_id`: **LLM NL2SQL** (semantic + physical schema → `sql_gen` → **sqlglot** policy → read-only execute → `answer_gen`) when keys exist; else **heuristic** preview fallback; `evidence.query_kind` distinguishes **`llm_sql`** vs **`llm_sql_heuristic_fallback`** |
 | Dashboard lifecycle | Business user | Create, list, detail, AI edit, versions | **[Partial]** — **in-memory** only; simplified spec merge and version list |
 | Observability | Platform | Request logging, AI task metadata (extend for full metrics) | **[Partial]** — HTTP logging only |
 

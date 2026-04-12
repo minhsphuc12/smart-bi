@@ -20,8 +20,28 @@ cd apps/api
 python3.13 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
+cp .env.example .env   # optional: edit .env for LLM keys and path overrides
 uvicorn app.main:app --reload --port 8000
 ```
+
+On startup the API loads environment files (without clobbering variables already set in the shell):
+
+1. **`<repo>/.env`** — optional shared defaults for the whole monorepo  
+2. **`apps/api/.env`** — optional overrides for the API (wins over repo for duplicate keys)
+
+Use **`apps/api/.env.example`** as a template. **Never commit** `.env` (it stays gitignored).
+
+### LLM API keys (server-side only)
+
+Ask Data with a **`connection_id`** uses `sql_gen` and `answer_gen` profiles from **Admin → AI routing**. When the matching provider has an API key in the environment, the API calls the vendor over HTTPS; otherwise it falls back to **simulated** router text and a **heuristic** SQL preview.
+
+| Provider | Env vars (first match wins) | Optional base URL |
+|----------|------------------------------|-------------------|
+| **openai** | `SMART_BI_OPENAI_API_KEY`, `OPENAI_API_KEY` | `SMART_BI_OPENAI_BASE_URL` or `OPENAI_API_BASE` (default `https://api.openai.com/v1`) |
+| **anthropic** | `SMART_BI_ANTHROPIC_API_KEY`, `ANTHROPIC_API_KEY` | — |
+| **google** (Gemini) | `SMART_BI_GOOGLE_API_KEY`, `GOOGLE_API_KEY`, `GEMINI_API_KEY` | — |
+
+Set keys in **`apps/api/.env`**, the repo-root `.env`, your shell, or your deployment secret store — **never commit** real tokens. Semantic layer content is loaded from `semantic.json` (or `SMART_BI_SEMANTIC_FILE`) and sent in the SQL prompt together with introspected physical schema.
 
 ### API tests
 
@@ -43,6 +63,8 @@ npm install
 npm run dev
 ```
 
+Next.js automatically loads **`apps/web/.env.local`** (gitignored). Use `NEXT_PUBLIC_API_URL` when the browser should call the API on a non-default host/port (otherwise the app uses same-origin `/api-proxy`).
+
 ## Documentation
 
 | Document | Description |
@@ -61,7 +83,8 @@ All notable changes to this project are documented in this section. Versions fol
 
 ### [Unreleased]
 
-- _(Add changes here before tagging a release.)_
+- API: load optional **`.env`** files via `python-dotenv` (`repo/.env` then `apps/api/.env`); add `apps/api/.env.example`.
+- Ask Data: NL2SQL with **LLM** + **semantic layer** + live schema when `connection_id` is set and provider API keys exist; **sqlglot** policy (read-only SELECT, table allowlist, row cap); heuristic preview fallback; Ask UI refresh (sidebar, chips, CSV export, copy answer, keyboard submit).
 
 ### [0.1.0] — 2026-04-11
 

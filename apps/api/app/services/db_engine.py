@@ -6,7 +6,7 @@ import re
 from typing import Any, Literal
 from urllib.parse import quote_plus
 
-from sqlalchemy import MetaData, Table, create_engine, select, text
+from sqlalchemy import MetaData, Table, create_engine, desc, func, select, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.pool import NullPool
@@ -195,6 +195,147 @@ def pick_table_for_question(question: str, tables: list[dict[str, Any]]) -> dict
     if best_score > 0:
         return best
     return tables[0]
+
+
+_COUNT_RE = re.compile(
+    r"\b(how many|number of|count of|count the|count all)\b", re.IGNORECASE
+)
+_SUM_RE = re.compile(r"\b(sum|total|add up|aggregate)\b", re.IGNORECASE)
+
+
+def _question_tokens(question: str) -> set[str]:
+    return set(re.findall(r"[a-z0-9_]+", question.lower()))
+
+
+def _infer_sum_column(question: str, columns: list[str]) -> str | None:
+    tokens = _question_tokens(question)
+    priority = (
+        "revenue",
+        "amount",
+        "total",
+        "price",
+        "qty",
+        "quantity",
+        "sales",
+        "value",
+        "payment",
+        "cost",
+    )
+    for p in priority:
+        if p not in tokens:
+            continue
+        for c in columns:
+            cl = c.lower()
+            if cl == p or p in cl:
+                return c
+    for c in columns:
+        if len(c) > 2 and c.lower() in tokens:
+            return c
+    return None
+
+
+def _score_columns_for_question(question: str, columns: list[str]) -> list[tuple[str, int]]:
+    q = question.lower()
+    tokens = _question_tokens(question)
+    scored: list[tuple[str, int]] = []
+    for c in columns:
+        cl = c.lower()
+        score = 0
+        if cl in q:
+            score += 5
+        if cl in tokens:
+            score += 4
+        for t in tokens:
+            if len(t) >= 3 and t in cl:
+                score += 2
+        for part in cl.split("_"):
+            if len(part) >= 3 and part in tokens:
+                score += 2
+        scored.append((c, score))
+    scored.sort(key=lambda x: -x[1])
+    return scored
+
+
+def _infer_order_column(reflected: Table) -> Any | None:
+    date_markers = ("date", "time", "at", "when", "created", "updated", "timestamp")
+    for key in reflected.c.keys():
+        kl = key.lower()
+        if any(m in kl for m in date_markers):
+            return reflected.c[key]
+    return None
+
+
+def _wants_recent_order(question: str) -> bool:
+    return bool(
+        re.search(r"\b(latest|recent|last|newest|desc)\b", question.lower())
+    )
+
+
+def preview_for_question(
+    engine: Engine,
+    source_type: SourceType,
+    table: dict[str, Any],
+    question: str,
+    row_limit: int = 50,
+) -> tuple[str, list[str], list[list[Any]], dict[str, Any]]:
+    """Read-only preview shaped by lightweight heuristics (not full NL2SQL)."""
+    schema, tname = parse_table_parts(table["name"], source_type)
+    md = MetaData()
+    try:
+        reflected = Table(tname, md, schema=schema, autoload_with=engine)
+    except SQLAlchemyError as exc:
+        raise ValueError(f"Could not read table {table['name']}: {exc}") from exc
+
+    q = question.lower()
+    meta_base: dict[str, Any] = {"query_kind": "scan", "used_fallback": False}
+
+    if _COUNT_RE.search(q):
+        stmt = select(func.count()).select_from(reflected)
+        with engine.connect() as conn:
+            total = conn.execute(stmt).scalar_one()
+        rows = [[_serialize_cell(total)]]
+        cols = ["row_count"]
+        compiled = str(stmt.compile(engine, compile_kwargs={"literal_binds": False}))
+        return compiled, cols, rows, {**meta_base, "query_kind": "count", "selected_columns": None}
+
+    if _SUM_RE.search(q):
+        scol = _infer_sum_column(question, list(reflected.c.keys()))
+        if scol is not None:
+            col = reflected.c[scol]
+            stmt = select(func.sum(col))
+            with engine.connect() as conn:
+                raw_total = conn.execute(stmt).scalar_one()
+            rows = [[_serialize_cell(raw_total)]]
+            cols = [f"sum_{scol}"]
+            compiled = str(stmt.compile(engine, compile_kwargs={"literal_binds": False}))
+            return compiled, cols, rows, {
+                **meta_base,
+                "query_kind": "sum",
+                "selected_columns": [scol],
+            }
+
+    scored = _score_columns_for_question(question, list(reflected.c.keys()))
+    picked = [c for c, s in scored if s > 0][:16]
+    if picked:
+        stmt = select(*[reflected.c[c] for c in picked])
+        selected = picked
+    else:
+        fallback_cols = list(reflected.c.keys())[:24]
+        stmt = select(*[reflected.c[c] for c in fallback_cols])
+        selected = None
+
+    oc = _infer_order_column(reflected)
+    if oc is not None and _wants_recent_order(question):
+        stmt = stmt.order_by(desc(oc))
+    stmt = stmt.limit(row_limit)
+
+    with engine.connect() as conn:
+        result = conn.execute(stmt)
+        columns = list(result.keys())
+        raw_rows = result.fetchall()
+    rows = [[_serialize_cell(cell) for cell in row] for row in raw_rows]
+    compiled = str(stmt.compile(engine, compile_kwargs={"literal_binds": False}))
+    return compiled, columns, rows, {**meta_base, "selected_columns": selected}
 
 
 def preview_select(
