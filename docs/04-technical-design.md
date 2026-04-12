@@ -6,14 +6,25 @@
 
 | Topic | Status | Notes |
 |-------|--------|--------|
-| Monorepo layout (`apps/web`, `apps/api`, `packages/shared`) | **[Done]** | |
-| Docker Compose Postgres + Redis | **[Done]** | API does not yet persist domain data to Postgres |
-| Router modules listed below | **[Partial]** | Endpoints exist; many use in-memory stores |
-| Auth (JWT + RBAC enforcement on routes) | **[To do]** | Dev login returns fixed token; no middleware guards |
-| Oracle connectivity, introspection, NL2SQL execution | **[To do]** | Stubs / hardcoded paths |
-| SQL safety (AST, allowlist, row limits) | **[To do]** | Described below; not wired in `chat` |
-| AI router real providers | **[To do]** | `run_task` is simulated |
-| Dashboard persistence | **[Partial]** | In-memory lists in router module |
+| Monorepo layout (`apps/web`, `apps/api`, `packages/shared`) | **[Done]** | Web uses Next.js App Router (`.js` client components). |
+| Docker Compose Postgres + Redis | **[Done]** | Containers available; **API domain data not stored in Postgres yet**. |
+| Admin persistence (connections, semantic, AI routing) | **[Partial]** | **JSON files** under `apps/api/data/` with atomic writes; env overrides (see below). |
+| Router modules listed below | **[Partial]** | Endpoints implemented; dashboards still **in-memory** in `dashboards` router. |
+| Auth (JWT + RBAC enforcement on routes) | **[To do]** | `POST /auth/login` returns dev token + role heuristic; **no** verification middleware on routers. |
+| Multi-engine connectivity | **[Partial]** | `app/services/db_engine.py`: **Oracle**, **PostgreSQL**, **MySQL** URLs, ping, introspection, `preview_select` (read-only `LIMIT`). Used by admin test/introspect and chat when `connection_id` set. |
+| NL2SQL + SQL safety (AST, allowlist) | **[To do]** | Chat uses **heuristic table pick** + fixed `preview_select`; no generated-SQL policy engine. |
+| AI router real providers | **[To do]** | `run_task` returns **simulated** output; profiles drive displayed provider/model. |
+| Dashboard persistence | **[Partial]** | In-process lists in `app/routers/dashboards.py` (lost on restart). |
+
+### File-backed admin data (as-built)
+
+| Concern | Default path | Override env var |
+|---------|----------------|------------------|
+| Datasource connections | `apps/api/data/connections.json` | `SMART_BI_CONNECTIONS_FILE` |
+| Semantic bundle (tables, relationships, dictionary, metrics) | `apps/api/data/semantic.json` | `SMART_BI_SEMANTIC_FILE` |
+| AI routing profiles per task | `apps/api/data/ai_routing.json` | `SMART_BI_AI_ROUTING_FILE` |
+
+Passwords for connections are stored **in plaintext inside the JSON file** (development convenience only — see [Security Design](./05-security-design.md)).
 
 ## Repository layout
 
@@ -25,12 +36,12 @@
 | `docker-compose.yml` | Local Postgres 16 + Redis 7 |
 
 ## High-Level Architecture
-- `apps/web`: Next.js frontend for admin and users.
+- `apps/web`: Next.js frontend for admin and users (JavaScript client modules).
 - `apps/api`: FastAPI backend for auth, semantic layer, chat, dashboards.
 - `packages/shared`: shared schemas and DTO contracts.
-- Postgres: metadata and application state.
-- Oracle: business data source.
-- Redis: cache/session/job status.
+- **Postgres** (Compose): available for future app metadata; **not** the active store for connections/semantic/routing today.
+- **Business databases**: Oracle, PostgreSQL, or MySQL via SQLAlchemy (`oracledb` / `psycopg` / `pymysql` drivers as configured in requirements).
+- **Redis** (Compose): available for future cache/session/job state.
 
 Solution-level diagrams and capability mapping: [Solution Architecture](./solution-architecture.md).
 
@@ -52,13 +63,15 @@ Routers registered in `apps/api/app/main.py`:
 | `auth` | `/auth` | Login / JWT |
 | `admin_connections` | `/admin/connections` | Oracle profiles, test, introspect |
 | `admin_semantic` | `/admin/semantic` | Tables, relationships, dictionary, metrics |
-| `admin_ai_routing` | `/admin/ai-routing` | Task profiles and validation |
-| `chat` | `/chat` | Ask data (`POST /chat/questions`) |
+| `admin_ai_routing` | `/admin/ai-routing` | Catalog (`GET …/catalog`), profiles CRUD, `POST …/validate` |
+| `chat` | `/chat` | Ask data (`POST /chat/questions`) — optional `connection_id` for live DB preview |
 | `dashboards` | `/dashboards` | CRUD, AI edit, versions |
 
 Health: `GET /health`.
 
-## Ask Data sequence (logical)
+## Ask Data sequence
+
+**Target (full NL2SQL):**
 
 ```mermaid
 sequenceDiagram
@@ -80,6 +93,8 @@ sequenceDiagram
   A-->>W: answer, sql, columns, rows, confidence, warnings
   W-->>U: Answer card
 ```
+
+**As-built today:** `sql_gen` / `answer_gen` still produce **simulated** strings for `meta` and `answer`. If `connection_id` is **omitted**, SQL/rows are **demo placeholders**. If `connection_id` is set, the API loads or introspects tables, picks a table (keyword overlap heuristic or first table), runs **`preview_select`** (`SELECT` + `LIMIT` 50) via SQLAlchemy, and returns real `sql` / `columns` / `rows` with a **warning** that NL2SQL is not enabled.
 
 ## AI Task Profiles
 - `sql_gen`: SQL generation and SQL repair.
@@ -116,16 +131,17 @@ Each profile includes:
 
 ## API Contracts (Core)
 - Admin:
-  - `/admin/connections`
-  - `/admin/connections/{id}/test`
-  - `/admin/connections/{id}/introspect`
-  - `/admin/semantic/*`
-  - `/admin/ai-routing/profiles`
+  - `GET`/`POST` `/admin/connections`; `PUT` `/admin/connections/{id}`
+  - `POST` `/admin/connections/{id}/test` — real DB ping
+  - `POST` `/admin/connections/{id}/introspect` — real metadata query; caches result server-side for chat
+  - `GET`/`POST`/`PUT` `/admin/semantic/tables|relationships|dictionary|metrics`
+  - `GET` `/admin/ai-routing/catalog` — allowlisted providers and models (`app/ai_routing_catalog.py`)
+  - `GET`/`POST`/`PUT` `/admin/ai-routing/profiles`; `POST` `/admin/ai-routing/validate`
 - User:
-  - `/chat/questions`
-  - `/dashboards`
-  - `/dashboards/{id}/ai-edit`
-  - `/dashboards/{id}/versions`
+  - `POST` `/chat/questions` — body: `{ "question": string, "connection_id"?: number }`
+  - `GET`/`POST` `/dashboards`; `GET` `/dashboards/{id}`; `POST` `/dashboards/{id}/ai-edit`; `GET` `/dashboards/{id}/versions`
+
+Connection payloads support `source_type`: `oracle` | `postgresql` | `mysql` (see `ConnectionPayload` in `admin_connections.py`).
 
 ## SQL Safety Rules
 - Read-only statements only.
@@ -140,4 +156,6 @@ Each profile includes:
 - **Observability**: HTTP request logging middleware is attached in `main.py`; extend with structured metrics and AI token/cost counters per task profile for production.
 - **Evolution**: Replace stubbed or simplified chat/dashboard paths with full NL2SQL + spec validation while keeping response contracts stable for the web client.
 
-**[To do]** items aligned with roadmap: Postgres-backed metadata, credential encryption, real Oracle driver usage, SQL policy engine, provider SDK integration, and web UI per [UX roadmap](./02-ux-roadmap.md).
+**[To do]** items aligned with roadmap: Postgres-backed metadata, credential encryption at rest, NL2SQL + **SQL policy engine** on any generated text, provider SDK integration, durable dashboards, enforced JWT/RBAC, and semantic **versioning**.
+
+**Implemented recently (summary):** SQLAlchemy-based engine layer for three DB kinds; file persistence for admin stores; admin AI catalog; chat **live preview** path; Next.js flows for admin / ask / dashboards; Playwright smoke tests (`apps/web/e2e/app.spec.js`).

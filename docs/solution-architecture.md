@@ -2,7 +2,7 @@
 
 This document describes the solution from an architecture perspective: capabilities, major components, integrations, and how they satisfy MVP goals. Detailed API and data shapes live in [Technical Design](./04-technical-design.md).
 
-**Implementation status:** Architecture below is **target**. For phase-by-phase build state see [Technical Roadmap](./03-technical-roadmap.md) (status table at top). Today the API exposes **contract-oriented stubs** and **in-memory** state; Postgres/Redis in Compose are **not** yet the system of record for domain data.
+**Implementation status:** Architecture below is **target**; the repo is **hybrid**. Admin **connections**, **semantic layer**, and **AI routing profiles** persist to **JSON files** under `apps/api/data/` (overridable via env — see [Technical Design](./04-technical-design.md)). **Ask Data** can run a **live read-only `SELECT … LIMIT`** against a configured connection when `connection_id` is supplied and schema is cached or introspected; **NL2SQL** and **SQL policy engine** are still future work. **Dashboards** remain **in-process memory** (lost on restart). **Postgres/Redis** from Docker Compose are **not** wired as the app metadata store yet. **LLM calls** are still **simulated** in `run_task`.
 
 ## 1. Purpose and scope
 
@@ -19,11 +19,11 @@ Out of scope for this view matches [Product Vision and Scope](./01-product-visio
 | Capability | Primary consumers | Realized by | Build status |
 |------------|-------------------|-------------|--------------|
 | Identity & roles | All users | JWT auth, `admin` / `user` RBAC | **[Partial]** — dev login only; **no** enforced RBAC |
-| Datasource lifecycle | Admin | Connection CRUD, test, introspection | **[Partial]** — stub test/introspect; **no** Oracle |
-| Semantic governance | Admin | Tables, relationships, dictionary, metrics + versioning | **[Partial]** — in-memory CRUD; **no** versioning |
-| Model governance | Admin | AI routing profiles per task | **[Partial]** — profiles in memory; **no** real providers |
-| Ask data | Business user | NL2SQL pipeline, safety policy, execution, narrative | **[Partial]** — simulated AI; **hardcoded** SQL/rows |
-| Dashboard lifecycle | Business user | Create, list, detail, AI edit, versions | **[Partial]** — in-memory; simplified AI edit |
+| Datasource lifecycle | Admin | Connection CRUD, test, introspection | **[Partial]** — **real** connectivity test + schema introspection via SQLAlchemy for **Oracle, PostgreSQL, and MySQL**; profiles persisted to JSON (not Postgres) |
+| Semantic governance | Admin | Tables, relationships, dictionary, metrics + versioning | **[Partial]** — CRUD + **file-backed** JSON; **no** semantic versioning |
+| Model governance | Admin | AI routing profiles per task | **[Partial]** — profiles **file-backed**; allowlisted providers/models via catalog; **no** real provider SDK calls |
+| Ask data | Business user | NL2SQL pipeline, safety policy, execution, narrative | **[Partial]** — without `connection_id`: demo SQL/rows; **with** `connection_id`: **read-only preview** on a heuristically chosen table (max 50 rows); narrative still **simulated** |
+| Dashboard lifecycle | Business user | Create, list, detail, AI edit, versions | **[Partial]** — **in-memory** only; simplified spec merge and version list |
 | Observability | Platform | Request logging, AI task metadata (extend for full metrics) | **[Partial]** — HTTP logging only |
 
 ## 3. Context (system landscape)
@@ -93,7 +93,7 @@ flowchart LR
   Api --> Oracle[(Oracle)]
 ```
 
-- **Web**: Server and client UI for admin console, chat workspace, and dashboards; calls API over HTTPS in production.
+- **Web** (`apps/web`, Next.js App Router, **JavaScript** client components): login, **Admin** console (connections, semantic tabs, AI routing), **Ask Data** (answer card with SQL/details/table), **Dashboards** list/detail; uses `/api-proxy` rewrites or `NEXT_PUBLIC_API_URL` for API access (see `lib/api.js`).
 - **API**: Single service owning auth, metadata, semantic layer, chat orchestration, dashboard services, and AI routing.
 - **Shared**: Optional shared types/contracts for alignment between web and API.
 

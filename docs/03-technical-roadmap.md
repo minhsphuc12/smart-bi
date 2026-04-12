@@ -7,13 +7,13 @@ This roadmap orders engineering work from documentation through MVP hardening. I
 | Phase | Summary status |
 |-------|----------------|
 | 0 | **[Done]** |
-| 1 | **[Partial]** |
-| 2 | **[Partial]** |
-| 3 | **[Partial]** |
-| 4 | **[Partial]** |
-| 5 | **[Partial]** |
-| 6 | **[Partial]** |
-| 7 | **[Partial]** |
+| 1 | **[Partial]** — web + API + Compose; auth not production-grade |
+| 2 | **[Partial]** — **real** test + introspect (Oracle / PostgreSQL / MySQL); JSON persistence (not Postgres) |
+| 3 | **[Partial]** — semantic CRUD + **JSON** persistence; **no** versioning |
+| 4 | **[Partial]** — profiles + catalog + **JSON** persistence; `run_task` still simulated |
+| 5 | **[Partial]** — contract + UI; **live preview** with `connection_id`; **no** NL2SQL / policy engine |
+| 6 | **[Partial]** — in-memory dashboards; simplified AI edit |
+| 7 | **[Partial]** — pytest API tests + Playwright smoke; metrics/runbook TBD |
 
 ## Milestone overview
 
@@ -39,34 +39,35 @@ flowchart LR
 - **[Partial]** JWT auth and RBAC — dev `POST /auth/login` only; **no** enforced JWT on routers, **no** Postgres-backed users.
 
 ## Phase 2 - Data Admin Capabilities
-- **[Partial]** Oracle connection profile management — in-memory list; **not** persisted to Postgres.
-- **[Partial]** Connectivity test endpoint — stub success response; **not** real Oracle connectivity.
-- **[Partial]** Schema introspection pipeline — stub payload; **not** real introspection job or PK/FK sync.
+- **[Done]** Connection profile CRUD with **file-backed** list (`connection_store` → `apps/api/data/connections.json`).
+- **[Done]** Connectivity test — **real** `SELECT 1` (or Oracle `FROM DUAL`) via SQLAlchemy for **oracle / postgresql / mysql**.
+- **[Done]** Schema introspection — **real** `information_schema` / Oracle `user_tab_columns` query; in-memory **per-connection cache** for chat (`db_engine` cache).
+- **[To do]** Persist connections and introspection results in **Postgres**; PK/FK-rich metadata model as originally specified.
 
 ## Phase 3 - Semantic Layer
-- **[Partial]** CRUD for table descriptions, relationships, dictionary terms, metrics — in-memory; **not** durable semantic store.
-- **[To do]** Versioning for semantic definitions (as specified for production MVP).
+- **[Done]** CRUD for tables, relationships, dictionary, metrics with **file-backed** bundle (`semantic_store` → `semantic.json`).
+- **[To do]** Versioning for semantic definitions; validation beyond `name`/`description`.
 
 ## Phase 4 - AI Orchestration
-- **[Partial]** Provider abstraction — task routing reads profiles; **no** real LLM/SDK calls (`run_task` simulated).
-- **[Partial]** Task-based routing profiles — admin API holds profiles in memory.
-- **[To do]** Retry and fallback strategy (beyond profile fields).
-- **[To do]** Latency/cost tracking.
+- **[Partial]** Task routing reads **persisted** profiles; `GET /admin/ai-routing/catalog` exposes allowlisted providers/models (`ai_routing_catalog.py`).
+- **[To do]** Real LLM/SDK calls (`run_task` still **simulated**).
+- **[To do]** Retry and fallback strategy; latency/cost tracking.
 
 ## Phase 5 - Ask Data
-- **[To do]** Retrieval of semantic context for NL2SQL.
-- **[Partial]** SQL generation, SQL safety validation, execution — **hardcoded** SQL/rows; **no** parser/allowlist/Oracle execution path as designed.
-- **[Partial]** Result-grounded narrative — simulated `answer_gen` output.
-- **[Done]** Unified response payload shape for frontend rendering (contract-oriented).
+- **[To do]** Retrieval of semantic context for true NL2SQL.
+- **[Partial]** **Demo path** (no `connection_id`): hardcoded sample SQL/rows.
+- **[Partial]** **Live preview path** (`connection_id`): read-only `preview_select` on chosen table (max 50 rows); warns that NL2SQL is not enabled.
+- **[Partial]** Narrative — simulated `answer_gen` output (not grounded on query results yet).
+- **[Done]** Unified response payload for frontend (`AskPageClient`).
 
 ## Phase 6 - Dashboard AI
 - **[Partial]** Generate dashboard spec — simplified fixed spec + simulated `dashboard_gen`.
-- **[Partial]** Save dashboard and versions — in-memory only.
-- **[Partial]** AI edit with patch + preview + rollback — simplified merge; **no** full patch/diff UX contract.
+- **[Partial]** Save dashboard and versions — **in-memory** only.
+- **[Partial]** AI edit — simplified widget merge + version bump; **no** durable store or full diff UX.
 
 ## Phase 7 - Hardening
-- **[Partial]** Unit and integration tests — API tests exist (`pytest`); expand coverage.
-- **[To do]** E2E happy paths for 5 user stories.
+- **[Partial]** API tests — `apps/api/tests/test_api.py` (`pytest`; optional JSON report).
+- **[Partial]** E2E smoke — Playwright `apps/web/e2e/app.spec.js` (home, login, admin tabs, ask, dashboards list); extend for full five-story coverage.
 - **[Partial]** Logging — request logging middleware present.
 - **[To do]** Metrics and release runbook to production standard.
 
@@ -78,7 +79,7 @@ flowchart LR
 
 ## Post-MVP themes (backlog)
 
-- Additional datasources beyond Oracle (with unified semantic abstractions).
+- Additional datasource types beyond Oracle / PostgreSQL / MySQL (unified semantic abstractions).
 - Row-level security and enterprise IAM integration.
 - Async long-running queries and notifications.
 - Cost dashboards and quota enforcement per team.

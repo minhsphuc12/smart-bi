@@ -18,7 +18,7 @@ Build a Smart BI platform where business users can ask questions in natural lang
 - Dashboard creation is slow and usually depends on analysts.
 
 ## MVP Goals
-- Allow admins to connect Oracle and define semantic business knowledge.
+- Allow admins to connect a **business database** (first target **Oracle**; the current build also supports **PostgreSQL** and **MySQL** connection profiles for the same admin and preview flows) and define semantic business knowledge.
 - Allow end users to ask business questions and receive:
   - natural-language answer
   - data table

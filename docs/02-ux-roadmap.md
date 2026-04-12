@@ -14,23 +14,21 @@ Top-level areas (role-aware navigation):
 
 | Area | Audience | Purpose | UX build |
 |------|----------|---------|----------|
-| Sign-in / session | All | Access the product | **[Partial]** — stub login UX if any; not production auth UI |
-| Admin — Connections | Admin | Create, test, introspect Oracle | **[To do]** |
-| Admin — Semantic | Admin | Tables, relationships, dictionary, metrics | **[To do]** |
-| Admin — AI routing | Admin | Task profiles (provider, model, limits, fallback) | **[To do]** |
-| Ask Data (chat) | User | Questions, answers, SQL, tables | **[To do]** |
-| Dashboards | User | List, open, create from chat, AI edit with versions | **[To do]** |
+| Sign-in / session | All | Access the product | **[Partial]** — `/login` + `localStorage` session; **dev** token from API; not production auth |
+| Admin — Connections | Admin | Create, test, introspect datasources | **[Partial]** — full form (name, **source type** Oracle/PostgreSQL/MySQL, host, port, service or database, credentials), list, **Test** and **Introspect** actions |
+| Admin — Semantic | Admin | Tables, relationships, dictionary, metrics | **[Partial]** — tabbed editors with list + add + inline edit per segment (no version UI) |
+| Admin — AI routing | Admin | Task profiles (provider, model, limits) | **[Partial]** — catalog-driven pickers + save per task (`sql_gen`, `answer_gen`, `dashboard_gen`, `extract_classify`) |
+| Ask Data (chat) | User | Questions, answers, SQL, tables | **[Partial]** — composer + messages; **answer card** (answer, confidence, warnings, collapsible SQL, table, model line); optional **connection** selector for live preview |
+| Dashboards | User | List, open, create from chat, AI edit with versions | **[Partial]** — list, create modal, detail; AI edit returns preview payload (simplified backend) |
 
 ## Screen inventory (MVP)
 
-- **[To do] Auth**: login; session recovery or sign-out as needed.
-- **[To do] Admin connection**: form (host, port, service/SID, credentials), test result, introspect action and job status.
-- **[To do] Admin semantic**: editors for table descriptions, relationship overrides, business terms, metrics; version indicator where applicable.
-- **[To do] Admin AI routing**: profile list/detail; validate configuration action.
-- **[To do] Chat workspace**: thread or session list, composer, message list with **answer card** (summary, expandable SQL, table, confidence/warnings).
-- **[To do] Dashboard**: gallery/list; detail view; create-from-prompt flow; AI edit with **preview** and version history / rollback.
+- **[Partial] Auth** (`/login`): username/password → stores session; role badge from dev API (`admin*` → admin). Sign out clears session.
+- **[Partial] Admin** (`/admin`): tabbed **Admin console** — **Connections** (new connection form, table of connections, test/introspect), **Semantic layer** (four segments), **AI routing** (per-task profile forms + catalog).
+- **[Partial] Ask Data** (`/ask`): question field, **Ask** button, optional connection picker when connections exist; assistant **answer card** per UX principles.
+- **[Partial] Dashboards** (`/dashboards`, `/dashboards/[id]`): list + new dashboard; detail client with AI edit flow per API capabilities.
 
-**Note:** `apps/web` currently ships a **thin navigation shell** and placeholder pages; the screens above are **specification**, not yet product UI.
+**Implementation note:** UI is **Next.js App Router** with client components in `.js` files; API base from `NEXT_PUBLIC_API_URL` or same-origin **`/api-proxy`** rewrite to FastAPI (`apps/web/lib/api.js`, `next.config.js`).
 
 ## Core User Journeys
 1. Admin connects Oracle and validates connectivity.
@@ -42,28 +40,24 @@ Top-level areas (role-aware navigation):
 ## UX Milestones
 
 ### Milestone A - Foundation UX
-- **[Partial]** Authentication screens
-- **[Partial]** Role-aware navigation (basic shell only)
-- **[To do]** Empty states and onboarding hints
+- **[Partial]** Authentication screens (`/login`)
+- **[Partial]** Role-aware navigation (`TopNav`: Ask Data, Dashboards, Admin for admin role)
+- **[Partial]** Empty states in semantic segments and connections list
 
 ### Milestone B - Admin Console UX
-- **[To do]** Connection form with test feedback
-- **[To do]** Schema browser with search and filters
-- **[To do]** Semantic editor for tables, relationships, dictionary, and metrics
+- **[Partial]** Connection form with **Test** / **Introspect** feedback (errors from API surfaced)
+- **[Partial]** Schema outcome shown after introspect (table/column list from API) — **no** dedicated schema browser with search/filters yet
+- **[Partial]** Semantic editor for tables, relationships, dictionary, and metrics
 
 ### Milestone C - Ask Data UX
-- **[To do]** Chat with message history
-- **[To do]** Structured answer card:
-  - Answer summary
-  - SQL panel
-  - Data table
-- **[To do]** Confidence and warning indicators
+- **[Partial]** Chat with **in-session** message history (not persisted server-side)
+- **[Partial]** Structured answer card (answer, SQL in `<details>`, table, confidence, warnings, `meta` models line)
+- **[To do]** Persisted chat sessions; streaming answers
 
 ### Milestone D - Dashboard UX
-- **[To do]** Prompt-to-dashboard flow
-- **[To do]** Dashboard preview and save
-- **[To do]** Dashboard list/detail
-- **[To do]** AI edit prompt with diff preview and version rollback
+- **[Partial]** Prompt-to-dashboard flow (create from UI)
+- **[Partial]** Dashboard list/detail; create returns to list
+- **[Partial]** AI edit with API **preview** field — **no** rich diff / rollback UI yet
 
 ## Interaction patterns
 - **Evidence first**: surface SQL and raw rows alongside narrative so users can validate the answer.
