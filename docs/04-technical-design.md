@@ -12,9 +12,9 @@
 | Router modules listed below | **[Partial]** | Endpoints implemented; dashboards **persist** via `dashboard_store` with in-process cache + lock. |
 | Auth (JWT + RBAC enforcement on routes) | **[To do]** | `POST /auth/login` returns dev token + role heuristic; **no** verification middleware on routers. |
 | Multi-engine connectivity | **[Partial]** | `app/services/db_engine.py`: **Oracle**, **PostgreSQL**, **MySQL** URLs, ping, introspection, `preview_select` (read-only `LIMIT`). Used by admin test/introspect and chat when `connection_id` set. |
-| NL2SQL + SQL safety (AST, allowlist) | **[Partial]** | With `connection_id`: **`nl2sql_pipeline`** calls LLM `sql_gen`, then **`sql_policy`** (`sqlglot`) for read-only SELECT + table allowlist + row cap; heuristic **`preview_for_question`** if LLM SQL fails validation or execution. |
-| AI router real providers | **[Partial]** | **`llm_client`** + **`httpx`**: OpenAI-compatible chat, Anthropic Messages, Gemini `generateContent` when env API keys set; otherwise **`run_task`** stays simulated. |
-| Dashboard persistence | **[Partial]** | **File-backed JSON** via `dashboard_store` → `apps/api/data/dashboards.json` (`SMART_BI_DASHBOARDS_FILE`); in-memory copy under `app/routers/dashboards.py` lock. **`dashboard_gen`** uses **`llm_client`** when keys exist; optional **`connection_id`** runs introspection when the cache is empty so the LLM gets physical schema and emits widget **`sql`** (`dashboard_ai.py`). |
+| NL2SQL + SQL safety (AST, allowlist) | **[Partial]** | With `connection_id`: **`nl2sql_pipeline`** calls LLM `sql_gen`, then **`sql_policy`** (`sqlglot`) for read-only SELECT + table allowlist + row cap; **no** heuristic **`preview_for_question`** fallback — failures return **HTTP 400**. |
+| AI router real providers | **[Partial]** | **`llm_client`** + **`httpx`**: OpenAI-compatible chat, Anthropic Messages, Gemini `generateContent` when env API keys set; missing keys → **`run_task`** returns **`live: false`** + **`error`** (no simulated output). |
+| Dashboard persistence | **[Partial]** | **File-backed JSON** via `dashboard_store` → `apps/api/data/dashboards.json` (`SMART_BI_DASHBOARDS_FILE`); in-memory copy under `app/routers/dashboards.py` lock. **`dashboard_gen`** requires **`llm_client`**; optional **`connection_id`** runs introspection when the cache is empty so the LLM gets physical schema and emits widget **`sql`** (`dashboard_ai.py`). Bad keys or unusable JSON → **HTTP 400**. |
 
 ### File-backed admin data (as-built)
 
@@ -65,7 +65,7 @@ Routers registered in `apps/api/app/main.py`:
 | `admin_connections` | `/admin/connections` | Oracle profiles, test, introspect |
 | `admin_semantic` | `/admin/semantic` | Tables, relationships, dictionary, metrics |
 | `admin_ai_routing` | `/admin/ai-routing` | Catalog (`GET …/catalog`), profiles CRUD, `POST …/validate` |
-| `chat` | `/chat` | Ask data (`POST /chat/questions`) — **`connection_id` required**: **NL2SQL** (semantic + schema → LLM SQL → policy → execute) + **LLM answer** when keys configured; else heuristic preview |
+| `chat` | `/chat` | Ask data (`POST /chat/questions`) — **`connection_id` required**: **NL2SQL** (semantic + schema → LLM SQL → policy → execute → LLM answer); missing keys / policy / execution errors → **HTTP 400** |
 | `dashboards` | `/dashboards` | CRUD, AI edit, versions |
 
 Health: `GET /health`.
@@ -95,7 +95,7 @@ sequenceDiagram
   W-->>U: Answer card
 ```
 
-**As-built today:** `connection_id` is **required** (no demo placeholder path). **`nl2sql_pipeline`** loads **semantic.json** + cached/introspected **physical schema**, calls **`run_task("sql_gen", …)`** with a strict system prompt, extracts SQL, validates via **`sql_policy.prepare_readonly_select`** (`sqlglot`, allowlisted physical tables, CTE names exempt from physical match, row cap), executes read-only via SQLAlchemy `text()`, then calls **`run_task("answer_gen", …)`** with question + SQL + JSON sample rows for the user-facing answer. On missing API keys, invalid SQL, or execution errors, the pipeline **falls back** to **`preview_for_question`** / `preview_select` heuristics and sets `evidence.query_kind` to **`llm_sql_heuristic_fallback`**. `meta.sql_live` / `meta.answer_live` indicate whether vendor HTTP calls succeeded for each task.
+**As-built today:** `connection_id` is **required** (no demo placeholder path). **`nl2sql_pipeline`** loads **semantic.json** + cached/introspected **physical schema**, calls **`run_task("sql_gen", …)`** with a strict system prompt, validates via **`sql_policy.prepare_readonly_select`** (`sqlglot`, allowlisted physical tables, CTE names exempt from physical match, row cap), executes read-only via SQLAlchemy `text()`, then calls **`run_task("answer_gen", …)`** with question + SQL + JSON sample rows for the user-facing answer. Missing API keys, invalid SQL, execution errors, or empty model output raise **`ValueError`** → **HTTP 400** with `detail` for the web client. Successful responses set **`evidence.query_kind`** to **`llm_sql`** and **`meta.sql_live` / `meta.answer_live`** to **true**.
 
 ## AI Task Profiles
 - `sql_gen`: SQL generation and SQL repair.
@@ -139,8 +139,8 @@ Each profile includes:
   - `GET` `/admin/ai-routing/catalog` — allowlisted providers and models (`app/ai_routing_catalog.py`)
   - `GET`/`POST`/`PUT` `/admin/ai-routing/profiles`; `POST` `/admin/ai-routing/validate`
 - User:
-  - `POST` `/chat/questions` — body: `{ "question": string, "connection_id": number }` — response adds **`evidence`** (`query_kind`, `table`, `row_count`, `execution_ms`, …) and `meta.sql_task_note` / `meta.answer_task_note` (simulated router stubs).
-  - `GET`/`POST` `/dashboards` — body `{ "title", "prompt", "connection_id?" }` — response includes **`meta.dashboard_gen`** (`live`, `provider`, `model`, `parse_fallback`, `error`).
+  - `POST` `/chat/questions` — body: `{ "question": string, "connection_id": number }` — response adds **`evidence`** (`query_kind`, `row_count`, `execution_ms`, …) and `meta.sql_task_note` / `meta.answer_task_note` (truncated model text on success).
+  - `GET`/`POST` `/dashboards` — body `{ "title", "prompt", "connection_id?" }` — response includes **`meta.dashboard_gen`** (`live`, `provider`, `model`, `error` when applicable).
   - `GET` `/dashboards/{id}`; `POST` `/dashboards/{id}/ai-edit` — body `{ "prompt", "connection_id?" }` — returns `preview`, **`meta`**; `GET` `/dashboards/{id}/versions`
   - `POST` `/dashboards/{id}/run-queries` — body `{ "connection_id?" }` — executes each widget **`sql`** (read-only, **sqlglot** allowlist); uses body `connection_id` or **`dashboard.connection_id`**; response `{ "connection_id", "series": [{ "widget_index", "sql_executed", "columns", "rows", "error" }] }`.
 
@@ -161,7 +161,7 @@ Connection payloads support `source_type`: `oracle` | `postgresql` | `mysql` (se
 
 **[To do]** items aligned with roadmap: Postgres-backed metadata, credential encryption at rest, NL2SQL + **SQL policy engine** on any generated text, provider SDK integration, dashboards in **Postgres** (today: JSON file only), enforced JWT/RBAC, and semantic **versioning**.
 
-**Implemented recently (summary):** SQLAlchemy-based engine layer for three DB kinds; file persistence for admin stores and **dashboards** (`dashboard_store`); admin AI catalog; **`llm_client`** (OpenAI / Anthropic / Google HTTP); Ask Data **`nl2sql_pipeline`** + **`sql_policy`** (`sqlglot`) + heuristic fallback; Next.js flows for admin / ask / dashboards; Playwright smoke tests (`apps/web/e2e/app.spec.js`).
+**Implemented recently (summary):** SQLAlchemy-based engine layer for three DB kinds; file persistence for admin stores and **dashboards** (`dashboard_store`); admin AI catalog; **`llm_client`** (OpenAI / Anthropic / Google HTTP); Ask Data **`nl2sql_pipeline`** + **`sql_policy`** (`sqlglot`) with **HTTP 400** on failure (no heuristic fallback); Next.js flows for admin / ask / dashboards; Playwright smoke tests (`apps/web/e2e/app.spec.js`).
 
 ### LLM credentials (operations)
 

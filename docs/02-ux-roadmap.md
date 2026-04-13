@@ -18,14 +18,14 @@ Top-level areas (role-aware navigation):
 | Admin — Connections | Admin | Create, test, introspect datasources | **[Partial]** — full form (name, **source type** Oracle/PostgreSQL/MySQL, host, port, service or database, credentials), list, **Test** and **Introspect** actions |
 | Admin — Semantic | Admin | Tables, relationships, dictionary, metrics | **[Partial]** — tabbed editors with list + add + inline edit per segment (no version UI) |
 | Admin — AI routing | Admin | Task profiles (provider, model, limits) | **[Partial]** — catalog-driven pickers + save per task (`sql_gen`, `answer_gen`, `dashboard_gen`, `extract_classify`) |
-| Ask Data (chat) | User | Questions, answers, SQL, tables | **[Partial]** — two-column layout (thread + sticky datasource sidebar), suggestion chips, ⌘/Ctrl+Enter submit, **evidence** strip (query kind, table, row count, latency), copy answer + CSV export; **answer card** (answer, confidence, warnings, collapsible SQL, table, model line); optional **connection** selector for live preview |
+| Ask Data (chat) | User | Questions, answers, SQL, tables | **[Partial]** — two-column layout (thread + sticky datasource sidebar), suggestion chips, ⌘/Ctrl+Enter submit, **evidence** strip (query kind, row count, latency), copy answer + CSV export; **answer card** (answer, confidence, warnings, collapsible SQL, table, model line); **connection** selector; API errors shown inline (**HTTP 400** when LLM keys or SQL path fail) |
 | Dashboards | User | List, open, create from chat, AI edit with versions | **[Partial]** — list, create modal (optional datasource for schema hints), detail; **live `dashboard_gen`** when API keys set; **`meta.dashboard_gen`** strip; **JSON file** persistence (default `apps/api/data/dashboards.json`) |
 
 ## Screen inventory (MVP)
 
 - **[Partial] Auth** (`/login`): username/password → stores session; role badge from dev API (`admin*` → admin). Sign out clears session.
 - **[Partial] Admin** (`/admin`): tabbed **Admin console** — **Connections** (new connection form, table of connections, test/introspect), **Semantic layer** (four segments), **AI routing** (per-task profile forms + catalog).
-- **[Partial] Ask Data** (`/ask`): conversation thread, **New conversation**, composer with keyboard shortcut, sticky panel for connection + supported heuristic intents; assistant **answer card** per evidence-first principles.
+- **[Partial] Ask Data** (`/ask`): conversation thread, **New conversation**, composer with keyboard shortcut, sticky panel for connection + LLM/API requirements note; assistant **answer card** per evidence-first principles; failed asks show **alert** text from API `detail`.
 - **[Partial] Dashboards** (`/dashboards`, `/dashboards/[id]`): list + create modal (optional datasource for schema hints); detail with widget preview, **`meta.dashboard_gen`** strip, AI edit + versions.
 
 **Implementation note:** UI is **Next.js App Router** with client components in `.js` files; API base from `NEXT_PUBLIC_API_URL` or same-origin **`/api-proxy`** rewrite to FastAPI (`apps/web/lib/api.js`, `next.config.js`).
@@ -55,7 +55,7 @@ Top-level areas (role-aware navigation):
 - **[To do]** Persisted chat sessions; streaming answers; real LLM narratives
 
 ### Milestone D - Dashboard UX
-- **[Partial]** Prompt-to-dashboard flow (create from UI) with **real LLM** spec when provider keys configured; heuristic widget fallback if JSON parse fails
+- **[Partial]** Prompt-to-dashboard flow (create from UI) with **real LLM** spec when provider keys configured; JSON/LLM failures show **inline error** (**HTTP 400**) instead of placeholder widgets
 - **[Partial]** Dashboard list/detail; optional datasource selector for generation context; **`meta.dashboard_gen`** surfaced in UI
 - **[Partial]** AI edit with API **preview** field — **no** rich diff / rollback UI yet
 

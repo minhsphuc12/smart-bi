@@ -6,8 +6,8 @@
 |-------|--------|
 | 1 Admin Connect datasource | **[Pass — partial]** — **real** `POST …/test` and `POST …/introspect` against a reachable **Oracle, PostgreSQL, or MySQL** instance; results persisted in **process + JSON** (not enterprise metadata DB) |
 | 2 Admin Semantic | **[Pass — partial]** — CRUD **durable** via `semantic.json`; **no** versioning |
-| 3 User Ask Data | **[Pass — partial]** — **`connection_id` required**; **NL2SQL** when provider **API keys** are set (semantic + physical schema → LLM → **sqlglot** allowlist + row cap → execute → LLM answer), else **heuristic** preview; `evidence.query_kind` is **`llm_sql`** or **`llm_sql_heuristic_fallback`** |
-| 4 Dashboard from chat | **[Pass — partial]** — create/list/detail persisted to **`dashboards.json`** (or `SMART_BI_DASHBOARDS_FILE`); survives API restart; **`dashboard_gen`** live when LLM keys set (else simulated + heuristic widgets); optional **`connection_id`** triggers schema load (introspect if cache empty) so widgets can include executable **`sql`** |
+| 3 User Ask Data | **[Pass — partial]** — **`connection_id` required**; **NL2SQL** when provider **API keys** are set (semantic + physical schema → LLM → **sqlglot** allowlist + row cap → execute → LLM answer); missing keys / failures → **HTTP 400** with `detail`; success → **`evidence.query_kind`** is **`llm_sql`** |
+| 4 Dashboard from chat | **[Pass — partial]** — create/list/detail persisted to **`dashboards.json`** (or `SMART_BI_DASHBOARDS_FILE`); survives API restart; **`dashboard_gen`** requires LLM keys (else **HTTP 400**); optional **`connection_id`** triggers schema load (introspect if cache empty) so widgets can include executable **`sql`** |
 | 5 AI dashboard edit | **[Pass — partial]** — version list grows on edit; **`preview`** + **`meta.dashboard_gen`** in API response; **no** full diff/rollback UX |
 
 ## Story 1: Admin Connect datasource (Oracle primary)
@@ -33,7 +33,7 @@
 ### When
 - User asks a business question in chat.
 ### Then
-- Response includes answer text, SQL, columns, rows, confidence, warnings, and `evidence` (query kind, table, timings where applicable).
+- Response includes answer text, SQL, columns, rows, confidence, warnings, and `evidence` (query kind, row count, timings where applicable). Without provider API keys or when SQL policy or execution fails, the API returns **HTTP 400** with `detail` instead of a degraded preview.
 
 ## Story 4: User Create Dashboard with Chat
 ### Given

@@ -12,7 +12,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.routers.admin_ai_routing import get_profile_for_task
 from app.routers.admin_connections import get_connection_record
-from app.services import ask_data, db_engine, semantic_store, sql_policy
+from app.services import db_engine, semantic_store, sql_policy
 from app.services.ai_router import run_task
 from app.services.db_engine import _serialize_cell
 
@@ -85,47 +85,11 @@ def _execute_readonly(engine: Engine, sql: str) -> tuple[list[str], list[list[An
     return columns, rows
 
 
-def _confidence(query_kind: str) -> float:
-    if query_kind == "llm_sql":
-        return 0.82
-    if query_kind == "llm_sql_heuristic_fallback":
-        return 0.62
-    return 0.58
-
-
-def _warnings(
-    query_kind: str,
-    sql_gen: dict[str, Any],
-    answer_gen: dict[str, Any],
-    sql_policy_error: str | None,
-    exec_error: str | None,
-) -> list[str]:
-    out: list[str] = []
-    if query_kind == "llm_sql":
-        out.append(
-            "SQL was produced by an LLM using your semantic layer + live schema, then policy-checked "
-            "(read-only SELECT, allowlisted tables, row cap). Review before operational decisions."
-        )
-    elif query_kind == "llm_sql_heuristic_fallback":
-        out.append(
-            "LLM SQL was unavailable, invalid, or failed at runtime; results use the built-in heuristic preview instead."
-        )
-    if sql_gen.get("error"):
-        out.append(f"SQL model error: {sql_gen['error']}")
-    elif not sql_gen.get("live"):
-        out.append(
-            f"No API key configured for sql_gen provider '{sql_gen.get('provider')}' — "
-            "set the matching env var (see README) to enable LLM SQL."
-        )
-    if sql_policy_error:
-        out.append(f"SQL policy: {sql_policy_error}")
-    if exec_error:
-        out.append(f"Execution fallback: {exec_error}")
-    if not answer_gen.get("live"):
-        out.append("Answer narrative used template fallback (answer model not configured or returned an error).")
-    elif answer_gen.get("error"):
-        out.append(f"Answer model error: {answer_gen['error']}")
-    return out
+def _warnings() -> list[str]:
+    return [
+        "SQL was produced by an LLM using your semantic layer + live schema, then policy-checked "
+        "(read-only SELECT, allowlisted tables, row cap). Review before operational decisions."
+    ]
 
 
 def answer_question(connection_id: int, question: str, *, max_rows: int = 200) -> dict[str, Any]:
@@ -153,68 +117,47 @@ def answer_question(connection_id: int, question: str, *, max_rows: int = 200) -
     user_sql = f"{sem_txt}\n\n{phy_txt}\n\n## User question\n{question.strip()}"
 
     sql_gen = run_task("sql_gen", user_sql, system_prompt=system_sql)
+    if sql_gen.get("error"):
+        raise ValueError(str(sql_gen["error"]))
+    if not sql_gen.get("live"):
+        raise ValueError(
+            f"No API key configured for sql_gen provider '{sql_gen.get('provider')}'. "
+            "Set the matching environment variable (see README)."
+        )
 
-    prepared: str | None = None
-    policy_err: str | None = None
-    if sql_gen.get("live") and (sql_gen.get("output") or "").strip():
-        try:
-            prepared = sql_policy.prepare_readonly_select(
-                sql_gen["output"],
-                source_type=conn["source_type"],
-                allowed_table_names=allowed_names,
-                max_rows=max_rows,
-            )
-        except ValueError as exc:
-            policy_err = str(exc)
-
-    engine = db_engine.make_engine(conn)
-    sql = ""
-    columns: list[str] = []
-    rows: list[list[Any]] = []
-    query_kind = "llm_sql_heuristic_fallback"
-    exec_err: str | None = None
-    heuristic_evidence: dict[str, Any] = {}
+    raw_sql = (sql_gen.get("output") or "").strip()
+    if not raw_sql:
+        raise ValueError("SQL model returned an empty response.")
 
     try:
-        if prepared:
-            try:
-                columns, rows = _execute_readonly(engine, prepared)
-                sql = prepared
-                query_kind = "llm_sql"
-            except SQLAlchemyError as exc:
-                exec_err = str(exc)
-                prepared = None
+        prepared = sql_policy.prepare_readonly_select(
+            raw_sql,
+            source_type=conn["source_type"],
+            allowed_table_names=allowed_names,
+            max_rows=max_rows,
+        )
+    except ValueError as exc:
+        raise ValueError(f"SQL policy rejected generated SQL: {exc}") from exc
 
-        if not prepared:
-            sql, columns, rows, heuristic_evidence = ask_data.run_connected_question(
-                connection_id, question, row_limit=50
-            )
+    engine = db_engine.make_engine(conn)
+    try:
+        try:
+            columns, rows = _execute_readonly(engine, prepared)
+        except SQLAlchemyError as exc:
+            raise ValueError(f"Query execution failed: {exc}") from exc
     finally:
         engine.dispose()
 
+    sql = prepared
     elapsed_ms = int((time.perf_counter() - t0) * 1000)
 
-    if query_kind == "llm_sql":
-        evidence: dict[str, Any] = {
-            "query_kind": "llm_sql",
-            "used_fallback": False,
-            "execution_ms": elapsed_ms,
-            "row_count": len(rows),
-            "sql_policy_error": policy_err,
-            "exec_error": exec_err,
-        }
-    else:
-        evidence = dict(heuristic_evidence)
-        evidence["query_kind"] = "llm_sql_heuristic_fallback"
-        evidence["execution_ms"] = elapsed_ms
-        evidence["row_count"] = len(rows)
-        evidence.setdefault("used_fallback", True)
-        if policy_err:
-            evidence["sql_policy_error"] = policy_err
-        if exec_err:
-            evidence["exec_error"] = exec_err
+    evidence: dict[str, Any] = {
+        "query_kind": "llm_sql",
+        "used_fallback": False,
+        "execution_ms": elapsed_ms,
+        "row_count": len(rows),
+    }
 
-    # Narrative
     sample = json.dumps(rows[:40], default=str)
     user_ans = (
         f"User question:\n{question.strip()}\n\n"
@@ -228,24 +171,19 @@ def answer_question(connection_id: int, question: str, *, max_rows: int = 200) -
         "Do not invent tables, metrics, or numbers that are not supported by the sample."
     )
     answer_gen = run_task("answer_gen", user_ans, system_prompt=system_ans)
+    if answer_gen.get("error"):
+        raise ValueError(str(answer_gen["error"]))
+    if not answer_gen.get("live"):
+        raise ValueError(
+            f"No API key configured for answer_gen provider '{answer_gen.get('provider')}'. "
+            "Set the matching environment variable (see README)."
+        )
 
-    if answer_gen.get("live") and (answer_gen.get("output") or "").strip():
-        answer = answer_gen["output"].strip()
-    else:
-        table = str(evidence.get("table") or "unknown")
-        qk_inner = str(evidence.get("query_kind") or "scan")
-        if query_kind != "llm_sql":
-            answer = ask_data.compose_live_narrative(
-                question, table, qk_inner, columns, rows, evidence.get("selected_columns")
-            )
-        else:
-            answer = (
-                f"Here are **{len(rows)}** preview row(s) for your question (see the table below). "
-                "The answer model was unavailable, so review SQL and data directly."
-            )
+    answer = (answer_gen.get("output") or "").strip()
+    if not answer:
+        raise ValueError("Answer model returned an empty response.")
 
-    conf = _confidence(query_kind)
-    warns = _warnings(query_kind, sql_gen, answer_gen, policy_err, exec_err)
+    warns = _warnings()
 
     sql_prof = get_profile_for_task("sql_gen")
     ans_prof = get_profile_for_task("answer_gen")
@@ -255,7 +193,7 @@ def answer_question(connection_id: int, question: str, *, max_rows: int = 200) -
         "sql": sql,
         "columns": columns,
         "rows": rows,
-        "confidence": conf,
+        "confidence": 0.82,
         "warnings": warns,
         "evidence": evidence,
         "meta": {
@@ -263,7 +201,7 @@ def answer_question(connection_id: int, question: str, *, max_rows: int = 200) -
             "answer_model": ans_prof.get("model"),
             "sql_task_note": (sql_gen.get("output") or "")[:4000],
             "answer_task_note": (answer_gen.get("output") or "")[:4000],
-            "sql_live": bool(sql_gen.get("live")),
-            "answer_live": bool(answer_gen.get("live")),
+            "sql_live": True,
+            "answer_live": True,
         },
     }

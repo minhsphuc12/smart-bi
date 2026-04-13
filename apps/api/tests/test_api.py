@@ -131,14 +131,21 @@ def test_admin_ai_routing_persisted_to_file() -> None:
     assert disk["sql_gen"]["max_tokens"] == 900
 
 
-def test_dashboard_create_and_edit() -> None:
+@patch("app.routers.dashboards.generate_spec")
+def test_dashboard_create_and_edit(mock_generate_spec) -> None:
+    mock_generate_spec.return_value = {
+        "spec": {"widgets": [{"type": "kpi", "title": "Key", "field": "amount"}]},
+        "ai": {"live": True, "error": None, "provider": "openai", "model": "gpt-4o-mini"},
+        "change_summary": "ok",
+    }
     create = client.post("/dashboards", json={"title": "Sales", "prompt": "Create revenue dashboard"})
     assert create.status_code == 200
     body = create.json()
     dashboard_id = body["id"]
     assert "meta" in body and "dashboard_gen" in body["meta"]
     dg = body["meta"]["dashboard_gen"]
-    assert "live" in dg and "parse_fallback" in dg
+    assert "live" in dg and "provider" in dg
+    assert "parse_fallback" not in dg
     assert isinstance(body.get("spec", {}).get("widgets"), list)
     assert len(body["spec"]["widgets"]) >= 1
 
@@ -157,7 +164,13 @@ def test_dashboard_create_and_edit() -> None:
     assert len(disk["versions"][str(dashboard_id)]) >= 2
 
 
-def test_dashboard_run_queries_requires_connection() -> None:
+@patch("app.routers.dashboards.generate_spec")
+def test_dashboard_run_queries_requires_connection(mock_generate_spec) -> None:
+    mock_generate_spec.return_value = {
+        "spec": {"widgets": [{"type": "kpi", "title": "K", "field": "x"}]},
+        "ai": {"live": True, "error": None, "provider": "openai", "model": "gpt-4o-mini"},
+        "change_summary": "ok",
+    }
     create = client.post("/dashboards", json={"title": "NoConn", "prompt": "KPI only"})
     assert create.status_code == 200
     did = create.json()["id"]

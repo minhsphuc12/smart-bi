@@ -1,7 +1,7 @@
 """LLM-backed dashboard spec generation (create + AI edit).
 
 Produces a normalized ``{"widgets": [...]}`` contract for the web preview.
-When the model is unavailable or JSON parsing fails, falls back to a small heuristic spec.
+Requires a configured LLM and a valid JSON response; callers should surface errors to the client.
 """
 
 from __future__ import annotations
@@ -171,25 +171,6 @@ def normalize_spec(raw: dict[str, Any] | None) -> dict[str, Any]:
     return {"widgets": widgets}
 
 
-def _fallback_widgets(user_prompt: str) -> list[dict[str, Any]]:
-    hint = (user_prompt or "").strip().split("\n")[0][:80] or "Overview"
-    return [
-        {
-            "type": "line",
-            "title": f"Trend — {hint}",
-            "x": "date",
-            "y": "amount",
-            "description": "Heuristic placeholder; configure LLM keys and a datasource for executable SQL.",
-        },
-        {
-            "type": "kpi",
-            "title": "Key metric",
-            "field": "amount",
-            "description": "Heuristic placeholder KPI.",
-        },
-    ]
-
-
 def generate_spec(
     *,
     user_prompt: str,
@@ -197,7 +178,10 @@ def generate_spec(
     existing_spec: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """
-    Returns keys: spec (dict), ai (run_task result), parse_fallback (bool), change_summary (str).
+    Returns keys: spec (dict), ai (run_task result), change_summary (str).
+
+    Raises:
+        ValueError: Missing LLM configuration, vendor error, empty model output, or no usable widgets in JSON.
     """
     edit_mode = existing_spec is not None
     schema = _schema_context(connection_id)
@@ -215,21 +199,26 @@ def generate_spec(
         user_body + schema,
         system_prompt=_dashboard_system_prompt(edit_mode=edit_mode, require_sql=require_sql),
     )
-    parse_fallback = False
+    if ai.get("error"):
+        raise ValueError(str(ai["error"]))
+    if not ai.get("live"):
+        raise ValueError(
+            f"No API key configured for dashboard_gen provider '{ai.get('provider')}'. "
+            "Set the matching environment variable (see README)."
+        )
+
     parsed = _extract_json_object(str(ai.get("output") or ""))
     unwrapped = _unwrap_spec(parsed) if parsed is not None else None
     spec = normalize_spec(unwrapped) if unwrapped else {"widgets": []}
 
     if not spec["widgets"]:
-        parse_fallback = True
-        spec = {"widgets": _fallback_widgets(user_prompt)}
+        raise ValueError(
+            "Dashboard model returned no usable widget JSON. "
+            "Try a clearer prompt or verify the model follows the required JSON shape."
+        )
 
     summary = str(ai.get("output") or "").strip()
     if len(summary) > 280:
         summary = summary[:277] + "…"
-    if parse_fallback and ai.get("live"):
-        summary = "Model returned no usable JSON; applied heuristic widget layout. " + (summary or "")
-    elif parse_fallback:
-        summary = "LLM not configured or failed; applied heuristic widget layout."
 
-    return {"spec": spec, "ai": ai, "parse_fallback": parse_fallback, "change_summary": summary}
+    return {"spec": spec, "ai": ai, "change_summary": summary}

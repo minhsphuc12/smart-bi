@@ -296,8 +296,9 @@ export default function AskPageClient() {
               <h1 style={{ margin: 0 }}>Ask Data</h1>
               <p style={{ margin: 0, color: "var(--text-muted)", maxWidth: 720 }}>
                 Ask in natural language against a configured datasource, inspect the narrative, then audit SQL and
-                tabular evidence. The API runs read-only NL2SQL (when LLM keys are set) or heuristic previews (COUNT,
-                SUM, column-aware SELECT + LIMIT)—never writes.
+                tabular evidence. The API runs read-only NL2SQL (LLM + semantic layer + live schema, sqlglot policy)
+                when provider API keys are configured—never writes. Missing keys return a clear error instead of a
+                degraded preview.
               </p>
             </div>
             <div className="row" style={{ gap: 8, flexShrink: 0 }}>
@@ -402,19 +403,20 @@ export default function AskPageClient() {
               ))}
             </select>
             <p style={{ margin: "6px 0 0", fontSize: "0.85rem", color: "var(--text-muted)", lineHeight: 1.45 }}>
-              Run <strong>Introspect</strong> in Admin for faster first asks. The server picks a table from your wording
-              (or falls back to the first table), then applies heuristics—never writes.
+              Run <strong>Introspect</strong> in Admin for faster first asks. Configure <strong>AI routing</strong>{" "}
+              profiles and provider API keys on the server; without them, Ask returns an error instead of a stub answer.
             </p>
           </div>
           <div className="stack" style={{ gap: 10, fontSize: "0.88rem", color: "var(--text-muted)" }}>
             <p style={{ margin: 0, fontWeight: 700, color: "var(--text)" }}>
-              Supported intents (heuristic)
+              Requirements
             </p>
             <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.5 }}>
-              <li>Counting language → <span className="mono">COUNT(*)</span></li>
-              <li>Sum / total language + measure hints → <span className="mono">SUM(column)</span></li>
-              <li>Column names in the question → narrower <span className="mono">SELECT</span></li>
-              <li>“Latest / recent …” + date-like column → <span className="mono">ORDER BY … DESC</span></li>
+              <li>
+                <span className="mono">sql_gen</span> and <span className="mono">answer_gen</span> providers need valid
+                API keys
+              </li>
+              <li>Generated SQL is read-only (SELECT / WITH), allowlisted to visible tables, row-capped</li>
             </ul>
           </div>
           <Link href="/admin" className="btn btn-ghost" style={{ textDecoration: "none", justifyContent: "center" }}>

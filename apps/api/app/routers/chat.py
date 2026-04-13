@@ -11,7 +11,7 @@ class QuestionPayload(BaseModel):
     question: str
     connection_id: int = Field(
         ...,
-        description="Admin connection id; runs NL2SQL (LLM + semantic + schema) with read-only policy, or heuristic preview if LLM keys are missing.",
+        description="Admin connection id; NL2SQL (LLM + semantic + schema) with read-only sqlglot policy. Requires provider API keys.",
     )
 
 

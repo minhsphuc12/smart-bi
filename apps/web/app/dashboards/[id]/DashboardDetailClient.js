@@ -24,8 +24,7 @@ function GenMetaStrip({ meta }) {
         color: "var(--text-muted)"
       }}
     >
-      <span className={`badge ${dg.live ? "" : "badge-warn"}`}>{dg.live ? "LLM live" : "Simulated / offline"}</span>
-      {dg.parse_fallback ? <span className="badge badge-warn">Heuristic layout</span> : null}
+      <span className={`badge ${dg.live ? "" : "badge-warn"}`}>{dg.live ? "LLM live" : "Offline"}</span>
       <span className="mono">
         {dg.provider || "—"} · {dg.model || "—"}
       </span>

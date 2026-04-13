@@ -35,9 +35,12 @@ def run_task(
     if not llm_client.provider_configured(provider):
         return {
             **base,
-            "output": f"Simulated output for task={task}",
+            "output": "",
             "live": False,
-            "error": None,
+            "error": (
+                f"No API key configured for provider '{provider}'. "
+                "Set the matching environment variable (see README)."
+            ),
         }
 
     system = system_prompt if system_prompt is not None else _default_system_prompt(task)

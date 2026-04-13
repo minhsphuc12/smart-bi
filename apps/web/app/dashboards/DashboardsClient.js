@@ -9,7 +9,6 @@ function GenMetaStrip({ meta }) {
   const dg = meta?.dashboard_gen;
   if (!dg || typeof dg !== "object") return null;
   const live = dg.live;
-  const fb = dg.parse_fallback;
   return (
     <div
       className="row"
@@ -24,8 +23,7 @@ function GenMetaStrip({ meta }) {
         color: "var(--text-muted)"
       }}
     >
-      <span className={`badge ${live ? "" : "badge-warn"}`}>{live ? "LLM live" : "Simulated / offline"}</span>
-      {fb ? <span className="badge badge-warn">Heuristic layout</span> : null}
+      <span className={`badge ${live ? "" : "badge-warn"}`}>{live ? "LLM live" : "Offline"}</span>
       <span className="mono">
         {dg.provider || "—"} · {dg.model || "—"}
       </span>
@@ -121,8 +119,8 @@ export default function DashboardsClient() {
         <div className="stack" style={{ gap: 8 }}>
           <h1 style={{ margin: 0 }}>Dashboards</h1>
           <p style={{ margin: 0, color: "var(--text-muted)", maxWidth: 720 }}>
-            Describe the layout you want; the API calls <span className="mono">dashboard_gen</span> (real HTTPS when
-            keys are set). Pick a <strong>datasource</strong> so the model can emit per-widget{" "}
+            Describe the layout you want; the API calls <span className="mono">dashboard_gen</span> over HTTPS (provider
+            API keys required). Pick a <strong>datasource</strong> so the model can emit per-widget{" "}
             <span className="mono">sql</span>, then on the dashboard page use <strong>Load live data</strong> to run
             those queries and render charts.
           </p>
@@ -211,8 +209,7 @@ export default function DashboardsClient() {
 
       {items.length === 0 ? (
         <div className="empty">
-          No dashboards yet. Use “New dashboard” to generate a spec from your prompt (live LLM when keys are
-          configured).
+          No dashboards yet. Use “New dashboard” to generate a spec from your prompt (requires configured LLM API keys).
         </div>
       ) : (
         <div
@@ -247,11 +244,6 @@ export default function DashboardsClient() {
                   <span className={d.meta.dashboard_gen.live ? "badge" : "badge badge-warn"}>
                     {d.meta.dashboard_gen.live ? "LLM" : "Offline"}
                   </span>
-                  {d.meta.dashboard_gen.parse_fallback ? (
-                    <span className="badge badge-warn" style={{ marginLeft: 6 }}>
-                      Fallback
-                    </span>
-                  ) : null}
                 </p>
               ) : null}
               <span style={{ color: "var(--accent)", fontWeight: 700 }}>Open →</span>

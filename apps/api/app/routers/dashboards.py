@@ -40,14 +40,13 @@ class RunQueriesPayload(BaseModel):
     )
 
 
-def _meta_from_ai(ai: dict, parse_fallback: bool) -> dict:
+def _meta_from_ai(ai: dict) -> dict:
     return {
         "dashboard_gen": {
             "live": bool(ai.get("live")),
             "error": ai.get("error"),
             "provider": ai.get("provider"),
             "model": ai.get("model"),
-            "parse_fallback": parse_fallback,
         }
     }
 
@@ -64,15 +63,17 @@ def _persist_unlocked() -> None:
 
 @router.post("/dashboards")
 def create_dashboard(payload: DashboardCreatePayload) -> dict:
-    result = generate_spec(
-        user_prompt=payload.prompt,
-        connection_id=payload.connection_id,
-        existing_spec=None,
-    )
+    try:
+        result = generate_spec(
+            user_prompt=payload.prompt,
+            connection_id=payload.connection_id,
+            existing_spec=None,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     spec = result["spec"]
     ai = result["ai"]
-    parse_fallback = bool(result["parse_fallback"])
-    meta = _meta_from_ai(ai, parse_fallback)
+    meta = _meta_from_ai(ai)
 
     with _dash_lock:
         dashboard = {
@@ -124,15 +125,17 @@ def edit_dashboard(dashboard_id: int, payload: DashboardEditPayload) -> dict:
             else target.get("connection_id")
         )
 
-    result = generate_spec(
-        user_prompt=payload.prompt,
-        connection_id=effective_conn if isinstance(effective_conn, int) else None,
-        existing_spec=current_spec,
-    )
+    try:
+        result = generate_spec(
+            user_prompt=payload.prompt,
+            connection_id=effective_conn if isinstance(effective_conn, int) else None,
+            existing_spec=current_spec,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     updated = result["spec"]
     ai = result["ai"]
-    parse_fallback = bool(result["parse_fallback"])
-    meta = _meta_from_ai(ai, parse_fallback)
+    meta = _meta_from_ai(ai)
 
     with _dash_lock:
         refreshed: dict | None = None
