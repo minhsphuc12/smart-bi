@@ -165,6 +165,57 @@ def test_dashboard_create_and_edit(mock_generate_spec) -> None:
 
 
 @patch("app.routers.dashboards.generate_spec")
+def test_dashboard_patch_delete_and_widget_crud(mock_generate_spec) -> None:
+    mock_generate_spec.return_value = {
+        "spec": {
+            "widgets": [
+                {"type": "kpi", "title": "A", "field": "x", "sql": "SELECT 1 AS x FROM dual"},
+                {"type": "table", "title": "B", "sql": "SELECT 1 AS c FROM dual"},
+            ]
+        },
+        "ai": {"live": True, "error": None, "provider": "openai", "model": "gpt-4o-mini"},
+        "change_summary": "ok",
+    }
+    create = client.post("/dashboards", json={"title": "Dash", "prompt": "two widgets"})
+    assert create.status_code == 200
+    did = create.json()["id"]
+
+    bad_patch = client.patch(f"/dashboards/{did}", json={})
+    assert bad_patch.status_code == 400
+
+    patch = client.patch(f"/dashboards/{did}", json={"title": "  Renamed  "})
+    assert patch.status_code == 200
+    assert patch.json()["title"] == "Renamed"
+
+    add = client.post(
+        f"/dashboards/{did}/widgets",
+        json={"type": "kpi", "title": "New KPI", "field": "m", "sql": "SELECT 2 AS m FROM dual"},
+    )
+    assert add.status_code == 200
+    assert add.json()["widget_index"] == 2
+    assert len(add.json()["dashboard"]["spec"]["widgets"]) == 3
+
+    upd = client.patch(
+        f"/dashboards/{did}/widgets/0",
+        json={"title": "A2", "sql": "SELECT 3 AS x FROM dual"},
+    )
+    assert upd.status_code == 200
+    assert upd.json()["widget"]["title"] == "A2"
+
+    rm = client.delete(f"/dashboards/{did}/widgets/1")
+    assert rm.status_code == 200
+    assert len(rm.json()["dashboard"]["spec"]["widgets"]) == 2
+
+    versions = client.get(f"/dashboards/{did}/versions")
+    assert versions.status_code == 200
+    assert len(versions.json()) >= 5
+
+    gone = client.delete(f"/dashboards/{did}")
+    assert gone.status_code == 200
+    assert client.get(f"/dashboards/{did}").status_code == 404
+
+
+@patch("app.routers.dashboards.generate_spec")
 def test_dashboard_run_queries_requires_connection(mock_generate_spec) -> None:
     mock_generate_spec.return_value = {
         "spec": {"widgets": [{"type": "kpi", "title": "K", "field": "x"}]},

@@ -7,6 +7,32 @@ import { useCallback, useEffect, useState } from "react";
 import { apiRequest } from "../../../lib/api";
 import { WidgetAreaChart, WidgetDataTable, WidgetKpiValue } from "../widgetCharts";
 
+const WIDGET_TYPES = ["line", "bar", "area", "kpi", "table"];
+
+function emptyWidgetForm() {
+  return {
+    type: "kpi",
+    title: "",
+    x: "",
+    y: "",
+    field: "",
+    description: "",
+    sql: ""
+  };
+}
+
+function widgetToForm(w) {
+  return {
+    type: (w.type || "kpi").toLowerCase(),
+    title: w.title != null ? String(w.title) : "",
+    x: w.x != null ? String(w.x) : "",
+    y: w.y != null ? String(w.y) : "",
+    field: w.field != null ? String(w.field) : "",
+    description: w.description != null ? String(w.description) : "",
+    sql: w.sql != null ? String(w.sql) : ""
+  };
+}
+
 function GenMetaStrip({ meta }) {
   const dg = meta?.dashboard_gen;
   if (!dg || typeof dg !== "object") return null;
@@ -37,7 +63,7 @@ function GenMetaStrip({ meta }) {
   );
 }
 
-function WidgetCard({ widget, index, dataResult }) {
+function WidgetCard({ widget, index, dataResult, onEdit, onDelete }) {
   const t = (widget.type || "").toLowerCase();
   const isChart = t === "line" || t === "bar" || t === "area";
   const isKpi = t === "kpi";
@@ -50,9 +76,23 @@ function WidgetCard({ widget, index, dataResult }) {
 
   return (
     <div className="card stack" style={{ padding: 16, gap: 10 }}>
-      <div className="row-spread">
-        <strong style={{ textTransform: "capitalize" }}>{widget.type}</strong>
-        <span className="badge">#{index + 1}</span>
+      <div className="row-spread" style={{ alignItems: "center", gap: 8 }}>
+        <div className="row" style={{ gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <strong style={{ textTransform: "capitalize" }}>{widget.type}</strong>
+          <span className="badge">#{index + 1}</span>
+        </div>
+        <div className="row" style={{ gap: 6, flexShrink: 0 }}>
+          {typeof onEdit === "function" ? (
+            <button type="button" className="btn btn-ghost" style={{ fontSize: "0.8rem" }} onClick={() => onEdit(index)}>
+              Edit
+            </button>
+          ) : null}
+          {typeof onDelete === "function" ? (
+            <button type="button" className="btn btn-ghost" style={{ fontSize: "0.8rem" }} onClick={() => onDelete(index)}>
+              Remove
+            </button>
+          ) : null}
+        </div>
       </div>
       <p style={{ margin: 0, fontWeight: 600 }}>{widget.title}</p>
       {widget.description ? (
@@ -160,6 +200,9 @@ export default function DashboardDetailClient() {
   const [connectionId, setConnectionId] = useState("");
   const [series, setSeries] = useState(null);
   const [dataError, setDataError] = useState("");
+  const [titleDraft, setTitleDraft] = useState("");
+  const [widgetDialog, setWidgetDialog] = useState(null);
+  const [widgetForm, setWidgetForm] = useState(emptyWidgetForm);
 
   const loadConnections = useCallback(async () => {
     try {
@@ -217,6 +260,115 @@ export default function DashboardDetailClient() {
       setConnectionId(String(saved));
     }
   }, [dashboard, connections]);
+
+  useEffect(() => {
+    if (dashboard?.title != null) setTitleDraft(String(dashboard.title));
+  }, [dashboard?.id, dashboard?.title]);
+
+  async function saveDashboardTitle(e) {
+    e.preventDefault();
+    const t = titleDraft.trim();
+    if (!t) {
+      setError("Title is required.");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      await apiRequest(`/dashboards/${id}`, { method: "PATCH", body: { title: t } });
+      await load();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function deleteThisDashboard() {
+    if (!window.confirm(`Delete dashboard #${id}? This cannot be undone.`)) return;
+    setBusy(true);
+    setError("");
+    try {
+      await apiRequest(`/dashboards/${id}`, { method: "DELETE" });
+      router.push("/dashboards");
+    } catch (err) {
+      setError(err.message);
+      setBusy(false);
+    }
+  }
+
+  function openWidgetAdd() {
+    setWidgetForm(emptyWidgetForm());
+    setWidgetDialog({ mode: "add" });
+    setError("");
+  }
+
+  function openWidgetEdit(index) {
+    const w = dashboard?.spec?.widgets?.[index];
+    if (!w) return;
+    setWidgetForm(widgetToForm(w));
+    setWidgetDialog({ mode: "edit", index });
+    setError("");
+  }
+
+  async function removeWidget(index) {
+    if (!window.confirm(`Remove widget #${index + 1}?`)) return;
+    setBusy(true);
+    setError("");
+    try {
+      await apiRequest(`/dashboards/${id}/widgets/${index}`, { method: "DELETE" });
+      setSeries(null);
+      await load();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function submitWidgetDialog(e) {
+    e.preventDefault();
+    if (!widgetDialog) return;
+    const t = widgetForm.title.trim();
+    if (!t) {
+      setError("Widget title is required.");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      if (widgetDialog.mode === "add") {
+        const body = { type: widgetForm.type, title: t };
+        ["x", "y", "field", "description"].forEach((k) => {
+          const v = widgetForm[k].trim();
+          if (v) body[k] = v;
+        });
+        const sq = widgetForm.sql;
+        if (typeof sq === "string" && sq.trim() !== "") {
+          body.sql = sq.trim();
+        }
+        await apiRequest(`/dashboards/${id}/widgets`, { method: "POST", body });
+      } else {
+        const patch = {
+          type: widgetForm.type,
+          title: t,
+          x: widgetForm.x.trim(),
+          y: widgetForm.y.trim(),
+          field: widgetForm.field.trim(),
+          description: widgetForm.description.trim(),
+          sql: widgetForm.sql
+        };
+        await apiRequest(`/dashboards/${id}/widgets/${widgetDialog.index}`, { method: "PATCH", body: patch });
+      }
+      setWidgetDialog(null);
+      setSeries(null);
+      await load();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function onLoadLiveData() {
     if (connectionId === "" || Number.isNaN(Number(connectionId))) {
@@ -306,7 +458,24 @@ export default function DashboardDetailClient() {
                 <p className="badge" style={{ marginBottom: 8 }}>
                   Dashboard #{dashboard.id}
                 </p>
-                <h1 style={{ margin: 0 }}>{dashboard.title}</h1>
+                <h1 style={{ margin: "0 0 10px" }}>{dashboard.title}</h1>
+                <form className="row" style={{ gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 8 }} onSubmit={saveDashboardTitle}>
+                  <label htmlFor="dash-title-draft" className="sr-only">
+                    Dashboard title
+                  </label>
+                  <input
+                    id="dash-title-draft"
+                    value={titleDraft}
+                    onChange={(e) => setTitleDraft(e.target.value)}
+                    style={{ minWidth: 200, flex: 1, maxWidth: 420, padding: "8px 10px", borderRadius: 8 }}
+                  />
+                  <button type="submit" className="btn btn-ghost" disabled={busy}>
+                    Save title
+                  </button>
+                  <button type="button" className="btn btn-ghost" onClick={() => void deleteThisDashboard()} disabled={busy}>
+                    Delete dashboard
+                  </button>
+                </form>
                 <p style={{ margin: 0, color: "var(--text-muted)" }}>
                   Generated with model <span className="mono">{dashboard.created_by_model || "n/a"}</span>
                   {dashboard.connection_id != null ? (
@@ -368,7 +537,12 @@ export default function DashboardDetailClient() {
           </section>
 
           <section className="stack">
-            <h2 style={{ margin: 0 }}>Widget preview</h2>
+            <div className="row-spread" style={{ alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+              <h2 style={{ margin: 0 }}>Widget preview</h2>
+              <button type="button" className="btn btn-primary" onClick={() => openWidgetAdd()} disabled={busy}>
+                Add widget
+              </button>
+            </div>
             <div
               style={{
                 display: "grid",
@@ -377,10 +551,95 @@ export default function DashboardDetailClient() {
               }}
             >
               {dashboard.spec?.widgets?.map((w, i) => (
-                <WidgetCard key={`${w.title}-${i}`} widget={w} index={i} dataResult={dataForIndex(i)} />
+                <WidgetCard
+                  key={`${dashboard.id}-w-${i}`}
+                  widget={w}
+                  index={i}
+                  dataResult={dataForIndex(i)}
+                  onEdit={openWidgetEdit}
+                  onDelete={removeWidget}
+                />
               ))}
             </div>
           </section>
+
+          {widgetDialog ? (
+            <div
+              className="card stack"
+              style={{ padding: 22 }}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="widget-dialog-title"
+            >
+              <div className="row-spread">
+                <h2 id="widget-dialog-title" style={{ margin: 0 }}>
+                  {widgetDialog.mode === "add" ? "Add widget" : `Edit widget #${widgetDialog.index + 1}`}
+                </h2>
+                <button type="button" className="btn btn-ghost" onClick={() => setWidgetDialog(null)}>
+                  Close
+                </button>
+              </div>
+              <form className="stack" style={{ gap: 12 }} onSubmit={submitWidgetDialog}>
+                <div className="field">
+                  <label htmlFor="wf-type">Type</label>
+                  <select
+                    id="wf-type"
+                    value={widgetForm.type}
+                    onChange={(e) => setWidgetForm((f) => ({ ...f, type: e.target.value }))}
+                  >
+                    {WIDGET_TYPES.map((wt) => (
+                      <option key={wt} value={wt}>
+                        {wt}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="field">
+                  <label htmlFor="wf-title">Title</label>
+                  <input
+                    id="wf-title"
+                    value={widgetForm.title}
+                    onChange={(e) => setWidgetForm((f) => ({ ...f, title: e.target.value }))}
+                    required
+                  />
+                </div>
+                <div className="row" style={{ gap: 12, flexWrap: "wrap" }}>
+                  <div className="field" style={{ flex: 1, minWidth: 120 }}>
+                    <label htmlFor="wf-x">X hint</label>
+                    <input id="wf-x" value={widgetForm.x} onChange={(e) => setWidgetForm((f) => ({ ...f, x: e.target.value }))} />
+                  </div>
+                  <div className="field" style={{ flex: 1, minWidth: 120 }}>
+                    <label htmlFor="wf-y">Y hint</label>
+                    <input id="wf-y" value={widgetForm.y} onChange={(e) => setWidgetForm((f) => ({ ...f, y: e.target.value }))} />
+                  </div>
+                </div>
+                <div className="field">
+                  <label htmlFor="wf-field">Field (KPI / table)</label>
+                  <input id="wf-field" value={widgetForm.field} onChange={(e) => setWidgetForm((f) => ({ ...f, field: e.target.value }))} />
+                </div>
+                <div className="field">
+                  <label htmlFor="wf-desc">Description</label>
+                  <input id="wf-desc" value={widgetForm.description} onChange={(e) => setWidgetForm((f) => ({ ...f, description: e.target.value }))} />
+                </div>
+                <div className="field">
+                  <label htmlFor="wf-sql">SQL</label>
+                  <textarea
+                    id="wf-sql"
+                    value={widgetForm.sql}
+                    onChange={(e) => setWidgetForm((f) => ({ ...f, sql: e.target.value }))}
+                    rows={5}
+                    className="mono"
+                    placeholder="Read-only SELECT; leave empty if not wired to a datasource yet."
+                  />
+                </div>
+                <div className="row">
+                  <button className="btn btn-primary" type="submit" disabled={busy}>
+                    {busy ? "Saving…" : widgetDialog.mode === "add" ? "Add widget" : "Save widget"}
+                  </button>
+                </div>
+              </form>
+            </div>
+          ) : null}
 
           <section className="card stack" style={{ padding: 22 }}>
             <h2 style={{ marginTop: 0 }}>AI edit</h2>
@@ -460,7 +719,8 @@ export default function DashboardDetailClient() {
               </div>
             )}
             <p style={{ margin: 0, color: "var(--text-muted)", fontSize: "0.9rem" }}>
-              Rollback to a prior version is not exposed in the API yet; history is read-only in the UI.
+              Rollback to a prior version is not exposed in the API yet; history is read-only in the UI (includes manual
+              title/widget edits).
             </p>
           </section>
         </>

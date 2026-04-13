@@ -36,11 +36,17 @@ function GenMetaStrip({ meta }) {
   );
 }
 
+function defaultTitleDraft(item) {
+  return item?.title != null ? String(item.title) : "";
+}
+
 export default function DashboardsClient() {
   const [items, setItems] = useState([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
+  const [editTarget, setEditTarget] = useState(null);
+  const [editTitle, setEditTitle] = useState("");
   const [title, setTitle] = useState("Executive overview");
   const [prompt, setPrompt] = useState(
     "Line chart for revenue by order date with a KPI for totals."
@@ -105,6 +111,48 @@ export default function DashboardsClient() {
       setLastCreateMeta(created.meta || null);
       setOpen(false);
       setPrompt("Line chart for revenue by order date with a KPI for totals.");
+      await load();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function openEdit(d) {
+    setEditTarget(d);
+    setEditTitle(defaultTitleDraft(d));
+    setError("");
+  }
+
+  async function saveEdit(e) {
+    e.preventDefault();
+    if (!editTarget) return;
+    const t = editTitle.trim();
+    if (!t) {
+      setError("Title is required.");
+      return;
+    }
+    setLoading(true);
+    setError("");
+    try {
+      await apiRequest(`/dashboards/${editTarget.id}`, { method: "PATCH", body: { title: t } });
+      setEditTarget(null);
+      await load();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function removeDashboard(d) {
+    if (!window.confirm(`Delete dashboard “${d.title}” (#${d.id})? This cannot be undone.`)) return;
+    setLoading(true);
+    setError("");
+    try {
+      await apiRequest(`/dashboards/${d.id}`, { method: "DELETE" });
+      if (editTarget?.id === d.id) setEditTarget(null);
       await load();
     } catch (err) {
       setError(err.message);
@@ -220,16 +268,15 @@ export default function DashboardsClient() {
           }}
         >
           {items.map((d) => (
-            <Link
+            <div
               key={d.id}
-              href={`/dashboards/${d.id}`}
               className="card stack"
               style={{
                 padding: 18,
-                textDecoration: "none",
                 color: "inherit",
                 borderColor: "var(--border)",
-                transition: "transform 0.12s ease"
+                transition: "transform 0.12s ease",
+                gap: 12
               }}
             >
               <div className="row-spread" style={{ alignItems: "flex-start" }}>
@@ -246,11 +293,56 @@ export default function DashboardsClient() {
                   </span>
                 </p>
               ) : null}
-              <span style={{ color: "var(--accent)", fontWeight: 700 }}>Open →</span>
-            </Link>
+              <div className="row" style={{ gap: 8, flexWrap: "wrap", marginTop: 4 }}>
+                <Link href={`/dashboards/${d.id}`} className="btn btn-primary" style={{ textDecoration: "none" }}>
+                  Open
+                </Link>
+                <button type="button" className="btn btn-ghost" onClick={() => openEdit(d)} disabled={loading}>
+                  Edit
+                </button>
+                <button type="button" className="btn btn-ghost" onClick={() => void removeDashboard(d)} disabled={loading}>
+                  Delete
+                </button>
+              </div>
+            </div>
           ))}
         </div>
       )}
+
+      {editTarget ? (
+        <div
+          className="card stack"
+          style={{ padding: 22 }}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="dash-edit-title"
+        >
+          <div className="row-spread">
+            <h2 id="dash-edit-title" style={{ margin: 0 }}>
+              Edit dashboard
+            </h2>
+            <button type="button" className="btn btn-ghost" onClick={() => setEditTarget(null)}>
+              Close
+            </button>
+          </div>
+          <form className="stack" style={{ gap: 12 }} onSubmit={saveEdit}>
+            <div className="field">
+              <label htmlFor="dash-edit-title-input">Title</label>
+              <input
+                id="dash-edit-title-input"
+                value={editTitle}
+                onChange={(e) => setEditTitle(e.target.value)}
+                required
+              />
+            </div>
+            <div className="row">
+              <button className="btn btn-primary" type="submit" disabled={loading}>
+                {loading ? "Saving…" : "Save"}
+              </button>
+            </div>
+          </form>
+        </div>
+      ) : null}
     </main>
   );
 }

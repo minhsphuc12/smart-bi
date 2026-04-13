@@ -1,10 +1,13 @@
+from __future__ import annotations
+
 from threading import Lock
+from typing import Any
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from app.services import dashboard_store
-from app.services.dashboard_ai import generate_spec
+from app.services.dashboard_ai import MAX_DASHBOARD_WIDGETS, generate_spec, normalize_spec
 from app.services.dashboard_queries import run_all_widget_queries
 
 router = APIRouter(tags=["dashboards"])
@@ -33,6 +36,31 @@ class DashboardEditPayload(BaseModel):
     connection_id: int | None = Field(default=None, description="Optional schema context for the LLM.")
 
 
+class DashboardPatchPayload(BaseModel):
+    title: str | None = None
+    connection_id: int | None = None
+
+
+class WidgetUpsertPayload(BaseModel):
+    type: str
+    title: str
+    x: str | None = None
+    y: str | None = None
+    field: str | None = None
+    description: str | None = None
+    sql: str | None = None
+
+
+class WidgetPatchPayload(BaseModel):
+    type: str | None = None
+    title: str | None = None
+    x: str | None = None
+    y: str | None = None
+    field: str | None = None
+    description: str | None = None
+    sql: str | None = None
+
+
 class RunQueriesPayload(BaseModel):
     connection_id: int | None = Field(
         default=None,
@@ -59,6 +87,25 @@ def _next_id_unlocked() -> int:
 
 def _persist_unlocked() -> None:
     dashboard_store.save_state(dashboards, dashboard_versions)
+
+
+def _append_version_unlocked(dashboard_id: int, spec: dict[str, Any], note: str) -> None:
+    versions = dashboard_versions.setdefault(dashboard_id, [])
+    n = str(note)
+    if len(n) > 500:
+        n = n[:497] + "…"
+    versions.append({"version": len(versions) + 1, "spec": dict(spec), "change_note": n})
+
+
+def _normalize_single_widget(payload: dict[str, Any]) -> dict[str, Any]:
+    spec = normalize_spec({"widgets": [payload]})
+    widgets = spec.get("widgets") or []
+    if not widgets:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid widget: type must be line|bar|area|kpi|table and title is required.",
+        )
+    return widgets[0]
 
 
 @router.post("/dashboards")
@@ -108,6 +155,130 @@ def get_dashboard(dashboard_id: int) -> dict:
     raise HTTPException(status_code=404, detail="dashboard not found")
 
 
+@router.patch("/dashboards/{dashboard_id}")
+def patch_dashboard(dashboard_id: int, payload: DashboardPatchPayload) -> dict:
+    updates = payload.model_dump(exclude_unset=True)
+    if not updates:
+        raise HTTPException(status_code=400, detail="No fields to update.")
+    with _dash_lock:
+        target: dict | None = None
+        for dashboard in dashboards:
+            if dashboard["id"] == dashboard_id:
+                target = dashboard
+                break
+        if target is None:
+            raise HTTPException(status_code=404, detail="dashboard not found")
+        if "title" in updates:
+            title = str(updates["title"]).strip()
+            if not title:
+                raise HTTPException(status_code=400, detail="title cannot be empty.")
+            target["title"] = title[:200]
+        if "connection_id" in updates:
+            cid = updates["connection_id"]
+            target["connection_id"] = int(cid) if isinstance(cid, int) else None
+        spec = dict(target["spec"]) if isinstance(target.get("spec"), dict) else {"widgets": []}
+        _append_version_unlocked(dashboard_id, spec, "Manual: updated dashboard metadata")
+        _persist_unlocked()
+        return target
+
+
+@router.delete("/dashboards/{dashboard_id}")
+def delete_dashboard(dashboard_id: int) -> dict:
+    with _dash_lock:
+        idx: int | None = None
+        for i, dashboard in enumerate(dashboards):
+            if dashboard["id"] == dashboard_id:
+                idx = i
+                break
+        if idx is None:
+            raise HTTPException(status_code=404, detail="dashboard not found")
+        dashboards.pop(idx)
+        dashboard_versions.pop(dashboard_id, None)
+        _persist_unlocked()
+    return {"ok": True, "id": dashboard_id}
+
+
+@router.post("/dashboards/{dashboard_id}/widgets")
+def add_widget(dashboard_id: int, payload: WidgetUpsertPayload) -> dict:
+    raw = payload.model_dump()
+    normalized = _normalize_single_widget(raw)
+    with _dash_lock:
+        target: dict | None = None
+        for dashboard in dashboards:
+            if dashboard["id"] == dashboard_id:
+                target = dashboard
+                break
+        if target is None:
+            raise HTTPException(status_code=404, detail="dashboard not found")
+        spec = dict(target["spec"]) if isinstance(target.get("spec"), dict) else {"widgets": []}
+        widgets = [w for w in (spec.get("widgets") or []) if isinstance(w, dict)]
+        if len(widgets) >= MAX_DASHBOARD_WIDGETS:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Dashboard already has the maximum of {MAX_DASHBOARD_WIDGETS} widgets.",
+            )
+        widgets.append(normalized)
+        new_spec = {"widgets": widgets}
+        target["spec"] = new_spec
+        _append_version_unlocked(dashboard_id, new_spec, f"Manual: added widget “{normalized.get('title', '')}”")
+        _persist_unlocked()
+        return {"dashboard": target, "widget": normalized, "widget_index": len(widgets) - 1}
+
+
+@router.patch("/dashboards/{dashboard_id}/widgets/{widget_index}")
+def patch_widget(dashboard_id: int, widget_index: int, payload: WidgetPatchPayload) -> dict:
+    if widget_index < 0:
+        raise HTTPException(status_code=400, detail="widget_index must be non-negative.")
+    patch = payload.model_dump(exclude_unset=True)
+    if not patch:
+        raise HTTPException(status_code=400, detail="No fields to update.")
+    with _dash_lock:
+        target: dict | None = None
+        for dashboard in dashboards:
+            if dashboard["id"] == dashboard_id:
+                target = dashboard
+                break
+        if target is None:
+            raise HTTPException(status_code=404, detail="dashboard not found")
+        spec = dict(target["spec"]) if isinstance(target.get("spec"), dict) else {"widgets": []}
+        widgets = [dict(w) for w in (spec.get("widgets") or []) if isinstance(w, dict)]
+        if widget_index >= len(widgets):
+            raise HTTPException(status_code=404, detail="widget not found")
+        merged = {**widgets[widget_index], **patch}
+        normalized = _normalize_single_widget(merged)
+        widgets[widget_index] = normalized
+        new_spec = {"widgets": widgets}
+        target["spec"] = new_spec
+        _append_version_unlocked(dashboard_id, new_spec, f"Manual: updated widget #{widget_index + 1}")
+        _persist_unlocked()
+        return {"dashboard": target, "widget": normalized, "widget_index": widget_index}
+
+
+@router.delete("/dashboards/{dashboard_id}/widgets/{widget_index}")
+def delete_widget(dashboard_id: int, widget_index: int) -> dict:
+    if widget_index < 0:
+        raise HTTPException(status_code=400, detail="widget_index must be non-negative.")
+    with _dash_lock:
+        target: dict | None = None
+        for dashboard in dashboards:
+            if dashboard["id"] == dashboard_id:
+                target = dashboard
+                break
+        if target is None:
+            raise HTTPException(status_code=404, detail="dashboard not found")
+        spec = dict(target["spec"]) if isinstance(target.get("spec"), dict) else {"widgets": []}
+        widgets = [w for w in (spec.get("widgets") or []) if isinstance(w, dict)]
+        if widget_index >= len(widgets):
+            raise HTTPException(status_code=404, detail="widget not found")
+        removed = widgets.pop(widget_index)
+        new_spec = {"widgets": widgets}
+        target["spec"] = new_spec
+        title = str(removed.get("title") or "widget")
+        _append_version_unlocked(dashboard_id, new_spec, f"Manual: removed widget “{title}”")
+        _persist_unlocked()
+        return {"dashboard": target, "removed": removed}
+
+
 @router.post("/dashboards/{dashboard_id}/ai-edit")
 def edit_dashboard(dashboard_id: int, payload: DashboardEditPayload) -> dict:
     with _dash_lock:
@@ -149,11 +320,8 @@ def edit_dashboard(dashboard_id: int, payload: DashboardEditPayload) -> dict:
         refreshed["meta"] = meta
         if payload.connection_id is not None:
             refreshed["connection_id"] = payload.connection_id
-        versions = dashboard_versions[dashboard_id]
         note = str(result.get("change_summary") or ai.get("output") or "ai-edit")
-        if len(note) > 500:
-            note = note[:497] + "…"
-        versions.append({"version": len(versions) + 1, "spec": updated, "change_note": note})
+        _append_version_unlocked(dashboard_id, updated, note)
         _persist_unlocked()
         return {"dashboard": refreshed, "preview": updated, "meta": meta}
 

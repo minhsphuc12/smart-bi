@@ -15,6 +15,7 @@ from app.services import db_engine
 from app.services.ai_router import run_task
 
 _MAX_WIDGETS = 10
+MAX_DASHBOARD_WIDGETS = _MAX_WIDGETS
 _MAX_SQL_CHARS = 20_000
 _ALLOWED_TYPES = frozenset({"line", "bar", "area", "kpi", "table"})
 
