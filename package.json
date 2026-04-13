@@ -7,7 +7,8 @@
   ],
   "scripts": {
     "dev:web": "npm --workspace @smart-bi/web run dev",
-    "build:web": "npm --workspace @smart-bi/web run build",
+    "build:web": "node -e \"const fs=require('fs'),p=require('path').join('apps','web','.next');try{fs.rmSync(p,{recursive:true});}catch(e){}\" && npm --workspace @smart-bi/web run build",
+    "lint:web": "npm --workspace @smart-bi/web run lint",
     "test:e2e": "npm --workspace @smart-bi/web run test:e2e"
   }
 }

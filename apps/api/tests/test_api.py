@@ -1,3 +1,6 @@
+import json
+import os
+from pathlib import Path
 from unittest.mock import patch
 
 from fastapi.testclient import TestClient
@@ -131,11 +134,37 @@ def test_admin_ai_routing_persisted_to_file() -> None:
 def test_dashboard_create_and_edit() -> None:
     create = client.post("/dashboards", json={"title": "Sales", "prompt": "Create revenue dashboard"})
     assert create.status_code == 200
-    dashboard_id = create.json()["id"]
+    body = create.json()
+    dashboard_id = body["id"]
+    assert "meta" in body and "dashboard_gen" in body["meta"]
+    dg = body["meta"]["dashboard_gen"]
+    assert "live" in dg and "parse_fallback" in dg
+    assert isinstance(body.get("spec", {}).get("widgets"), list)
+    assert len(body["spec"]["widgets"]) >= 1
 
     edit = client.post(f"/dashboards/{dashboard_id}/ai-edit", json={"prompt": "Add KPI card"})
     assert edit.status_code == 200
+    assert "meta" in edit.json()
 
     versions = client.get(f"/dashboards/{dashboard_id}/versions")
     assert versions.status_code == 200
     assert len(versions.json()) >= 2
+
+    path = Path(os.environ["SMART_BI_DASHBOARDS_FILE"])
+    disk = json.loads(path.read_text(encoding="utf-8"))
+    assert len(disk["dashboards"]) == 1
+    assert str(dashboard_id) in disk["versions"]
+    assert len(disk["versions"][str(dashboard_id)]) >= 2
+
+
+def test_dashboard_run_queries_requires_connection() -> None:
+    create = client.post("/dashboards", json={"title": "NoConn", "prompt": "KPI only"})
+    assert create.status_code == 200
+    did = create.json()["id"]
+    bad = client.post(f"/dashboards/{did}/run-queries", json={})
+    assert bad.status_code == 400
+
+
+def test_dashboard_run_queries_not_found() -> None:
+    r = client.post("/dashboards/999999/run-queries", json={"connection_id": 1})
+    assert r.status_code == 404

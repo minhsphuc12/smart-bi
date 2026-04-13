@@ -10,9 +10,9 @@ This roadmap orders engineering work from documentation through MVP hardening. I
 | 1 | **[Partial]** — web + API + Compose; auth not production-grade |
 | 2 | **[Partial]** — **real** test + introspect (Oracle / PostgreSQL / MySQL); JSON persistence (not Postgres) |
 | 3 | **[Partial]** — semantic CRUD + **JSON** persistence; **no** versioning |
-| 4 | **[Partial]** — profiles + catalog + **JSON** persistence; `run_task` still simulated |
-| 5 | **[Partial]** — contract + UI; **live preview** with `connection_id`; **no** NL2SQL / policy engine |
-| 6 | **[Partial]** — in-memory dashboards; simplified AI edit |
+| 4 | **[Partial]** — profiles + catalog + **JSON** persistence; **`run_task`** uses **real HTTPS** when per-provider API keys exist (**simulated** when missing) |
+| 5 | **[Partial]** — contract + UI; **NL2SQL pipeline** with `connection_id` when LLM keys set; **sqlglot** policy + heuristic fallback |
+| 6 | **[Partial]** — **JSON file** dashboards + versions; **LLM `dashboard_gen`** + parse fallback; AI edit via full-spec LLM |
 | 7 | **[Partial]** — pytest API tests + Playwright smoke; metrics/runbook TBD |
 
 ## Milestone overview
@@ -60,9 +60,9 @@ flowchart LR
 - **[Done]** Unified response payload for frontend (`AskPageClient`) including `evidence` and `meta.sql_live` / `meta.answer_live`.
 
 ## Phase 6 - Dashboard AI
-- **[Partial]** Generate dashboard spec — simplified fixed spec + simulated `dashboard_gen`.
-- **[Partial]** Save dashboard and versions — **in-memory** only.
-- **[Partial]** AI edit — simplified widget merge + version bump; **no** durable store or full diff UX.
+- **[Partial]** Generate dashboard spec — **`dashboard_gen`** LLM with strict JSON contract + parse fallback; optional **`connection_id`** loads physical schema via introspection when needed (not only cached hints) so widgets can include **`sql`** (`dashboard_ai` service).
+- **[Partial]** Save dashboard and versions — **`dashboard_store`** atomic JSON (`dashboards` + `versions` map); **no** Postgres metadata store yet.
+- **[Partial]** AI edit — full-spec LLM pass (not blind widget append) + version bump persisted to JSON; **no** rich diff / rollback UX.
 
 ## Phase 7 - Hardening
 - **[Partial]** API tests — `apps/api/tests/test_api.py` (`pytest`; optional JSON report).

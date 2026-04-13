@@ -26,12 +26,12 @@ test.describe("Smart BI MVP", () => {
     await page.getByRole("button", { name: /Continue/i }).click();
     await page.goto("/admin");
     await expect(page.getByRole("heading", { name: /Admin console/i })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Connections" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Semantic layer" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "AI routing" })).toBeVisible();
+    await expect(page.getByRole("tab", { name: "Connections" })).toBeVisible();
+    await expect(page.getByRole("tab", { name: "Semantic layer" })).toBeVisible();
+    await expect(page.getByRole("tab", { name: "AI routing" })).toBeVisible();
     await expect(page.getByRole("heading", { name: /New connection/i })).toBeVisible();
     await expect(page.getByLabel("Source type")).toBeVisible();
-    await page.getByRole("button", { name: "Semantic layer" }).click();
+    await page.getByRole("tab", { name: "Semantic layer" }).click();
     await expect(page.getByRole("heading", { name: "Table dictionary" })).toBeVisible();
   });
 

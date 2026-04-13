@@ -19,6 +19,10 @@ def pytest_configure(config) -> None:
     os.close(fd3)
     os.environ["SMART_BI_AI_ROUTING_FILE"] = path3
 
+    fd4, path4 = tempfile.mkstemp(prefix="smartbi-dashboards-", suffix=".json")
+    os.close(fd4)
+    os.environ["SMART_BI_DASHBOARDS_FILE"] = path4
+
 
 @pytest.fixture(autouse=True)
 def _reset_connection_store() -> None:
@@ -26,11 +30,15 @@ def _reset_connection_store() -> None:
     from app.routers import admin_ai_routing as air
     from app.routers import admin_connections as ac
     from app.routers import admin_semantic as sem
+    from app.routers import dashboards as dash
     from app.services import ai_routing_store
     from app.services import connection_store
+    from app.services import dashboard_store
+    from app.services import db_engine
     from app.services import semantic_store
 
     connection_store.save_connections([])
+    db_engine.clear_introspection_cache()
     with ac._conn_lock:
         ac._connections.clear()
         ac._connections.extend(connection_store.load_connections())
@@ -49,3 +57,11 @@ def _reset_connection_store() -> None:
     with air._ai_lock:
         air._profiles.clear()
         air._profiles.update(loaded_ai)
+
+    dashboard_store.save_state([], {})
+    with dash._dash_lock:
+        dash.dashboards.clear()
+        dash.dashboard_versions.clear()
+        boards, vers = dashboard_store.load_state()
+        dash.dashboards.extend(boards)
+        dash.dashboard_versions.update(vers)

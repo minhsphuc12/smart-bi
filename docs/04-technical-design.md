@@ -9,12 +9,12 @@
 | Monorepo layout (`apps/web`, `apps/api`, `packages/shared`) | **[Done]** | Web uses Next.js App Router (`.js` client components). |
 | Docker Compose Postgres + Redis | **[Done]** | Containers available; **API domain data not stored in Postgres yet**. |
 | Admin persistence (connections, semantic, AI routing) | **[Partial]** | **JSON files** under `apps/api/data/` with atomic writes; env overrides (see below). |
-| Router modules listed below | **[Partial]** | Endpoints implemented; dashboards still **in-memory** in `dashboards` router. |
+| Router modules listed below | **[Partial]** | Endpoints implemented; dashboards **persist** via `dashboard_store` with in-process cache + lock. |
 | Auth (JWT + RBAC enforcement on routes) | **[To do]** | `POST /auth/login` returns dev token + role heuristic; **no** verification middleware on routers. |
 | Multi-engine connectivity | **[Partial]** | `app/services/db_engine.py`: **Oracle**, **PostgreSQL**, **MySQL** URLs, ping, introspection, `preview_select` (read-only `LIMIT`). Used by admin test/introspect and chat when `connection_id` set. |
 | NL2SQL + SQL safety (AST, allowlist) | **[Partial]** | With `connection_id`: **`nl2sql_pipeline`** calls LLM `sql_gen`, then **`sql_policy`** (`sqlglot`) for read-only SELECT + table allowlist + row cap; heuristic **`preview_for_question`** if LLM SQL fails validation or execution. |
 | AI router real providers | **[Partial]** | **`llm_client`** + **`httpx`**: OpenAI-compatible chat, Anthropic Messages, Gemini `generateContent` when env API keys set; otherwise **`run_task`** stays simulated. |
-| Dashboard persistence | **[Partial]** | In-process lists in `app/routers/dashboards.py` (lost on restart). |
+| Dashboard persistence | **[Partial]** | **File-backed JSON** via `dashboard_store` → `apps/api/data/dashboards.json` (`SMART_BI_DASHBOARDS_FILE`); in-memory copy under `app/routers/dashboards.py` lock. **`dashboard_gen`** uses **`llm_client`** when keys exist; optional **`connection_id`** runs introspection when the cache is empty so the LLM gets physical schema and emits widget **`sql`** (`dashboard_ai.py`). |
 
 ### File-backed admin data (as-built)
 
@@ -23,6 +23,7 @@
 | Datasource connections | `apps/api/data/connections.json` | `SMART_BI_CONNECTIONS_FILE` |
 | Semantic bundle (tables, relationships, dictionary, metrics) | `apps/api/data/semantic.json` | `SMART_BI_SEMANTIC_FILE` |
 | AI routing profiles per task | `apps/api/data/ai_routing.json` | `SMART_BI_AI_ROUTING_FILE` |
+| Dashboards + version history | `apps/api/data/dashboards.json` | `SMART_BI_DASHBOARDS_FILE` |
 
 Passwords for connections are stored **in plaintext inside the JSON file** (development convenience only — see [Security Design](./05-security-design.md)).
 
@@ -139,7 +140,9 @@ Each profile includes:
   - `GET`/`POST`/`PUT` `/admin/ai-routing/profiles`; `POST` `/admin/ai-routing/validate`
 - User:
   - `POST` `/chat/questions` — body: `{ "question": string, "connection_id": number }` — response adds **`evidence`** (`query_kind`, `table`, `row_count`, `execution_ms`, …) and `meta.sql_task_note` / `meta.answer_task_note` (simulated router stubs).
-  - `GET`/`POST` `/dashboards`; `GET` `/dashboards/{id}`; `POST` `/dashboards/{id}/ai-edit`; `GET` `/dashboards/{id}/versions`
+  - `GET`/`POST` `/dashboards` — body `{ "title", "prompt", "connection_id?" }` — response includes **`meta.dashboard_gen`** (`live`, `provider`, `model`, `parse_fallback`, `error`).
+  - `GET` `/dashboards/{id}`; `POST` `/dashboards/{id}/ai-edit` — body `{ "prompt", "connection_id?" }` — returns `preview`, **`meta`**; `GET` `/dashboards/{id}/versions`
+  - `POST` `/dashboards/{id}/run-queries` — body `{ "connection_id?" }` — executes each widget **`sql`** (read-only, **sqlglot** allowlist); uses body `connection_id` or **`dashboard.connection_id`**; response `{ "connection_id", "series": [{ "widget_index", "sql_executed", "columns", "rows", "error" }] }`.
 
 Connection payloads support `source_type`: `oracle` | `postgresql` | `mysql` (see `ConnectionPayload` in `admin_connections.py`).
 
@@ -156,9 +159,9 @@ Connection payloads support `source_type`: `oracle` | `postgresql` | `mysql` (se
 - **Observability**: HTTP request logging middleware is attached in `main.py`; extend with structured metrics and AI token/cost counters per task profile for production.
 - **Evolution**: Replace stubbed or simplified chat/dashboard paths with full NL2SQL + spec validation while keeping response contracts stable for the web client.
 
-**[To do]** items aligned with roadmap: Postgres-backed metadata, credential encryption at rest, NL2SQL + **SQL policy engine** on any generated text, provider SDK integration, durable dashboards, enforced JWT/RBAC, and semantic **versioning**.
+**[To do]** items aligned with roadmap: Postgres-backed metadata, credential encryption at rest, NL2SQL + **SQL policy engine** on any generated text, provider SDK integration, dashboards in **Postgres** (today: JSON file only), enforced JWT/RBAC, and semantic **versioning**.
 
-**Implemented recently (summary):** SQLAlchemy-based engine layer for three DB kinds; file persistence for admin stores; admin AI catalog; **`llm_client`** (OpenAI / Anthropic / Google HTTP); Ask Data **`nl2sql_pipeline`** + **`sql_policy`** (`sqlglot`) + heuristic fallback; Next.js flows for admin / ask / dashboards; Playwright smoke tests (`apps/web/e2e/app.spec.js`).
+**Implemented recently (summary):** SQLAlchemy-based engine layer for three DB kinds; file persistence for admin stores and **dashboards** (`dashboard_store`); admin AI catalog; **`llm_client`** (OpenAI / Anthropic / Google HTTP); Ask Data **`nl2sql_pipeline`** + **`sql_policy`** (`sqlglot`) + heuristic fallback; Next.js flows for admin / ask / dashboards; Playwright smoke tests (`apps/web/e2e/app.spec.js`).
 
 ### LLM credentials (operations)
 

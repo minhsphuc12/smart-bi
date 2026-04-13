@@ -518,6 +518,7 @@ export default function AdminConsole() {
           <button
             key={tab.id}
             type="button"
+            role="tab"
             className="tab"
             aria-selected={mainTab === tab.id}
             onClick={() => setMainTab(tab.id)}
@@ -825,6 +826,7 @@ export default function AdminConsole() {
               <button
                 key={tab.id}
                 type="button"
+                role="tab"
                 className="tab"
                 aria-selected={semanticTab === tab.id}
                 onClick={() => setSemanticTab(tab.id)}

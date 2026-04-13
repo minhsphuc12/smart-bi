@@ -19,6 +19,7 @@ apps/api/test-record.json
 apps/api/data/connections.json
 apps/api/data/semantic.json
 apps/api/data/ai_routing.json
+apps/api/data/dashboards.json
 playwright-report/
 test-results/
 apps/web/playwright-report/

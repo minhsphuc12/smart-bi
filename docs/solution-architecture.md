@@ -2,7 +2,7 @@
 
 This document describes the solution from an architecture perspective: capabilities, major components, integrations, and how they satisfy MVP goals. Detailed API and data shapes live in [Technical Design](./04-technical-design.md).
 
-**Implementation status:** Architecture below is **target**; the repo is **hybrid**. Admin **connections**, **semantic layer**, and **AI routing profiles** persist to **JSON files** under `apps/api/data/` (overridable via env — see [Technical Design](./04-technical-design.md)). **Ask Data** with `connection_id` runs **`nl2sql_pipeline`**: semantic + physical schema → LLM **`sql_gen`** (when API keys are set) → **`sqlglot`** read-only policy → execute → LLM **`answer_gen`**, with **heuristic fallback** if keys or SQL fail. **Dashboards** remain **in-process memory** (lost on restart). **Postgres/Redis** from Docker Compose are **not** wired as the app metadata store yet. **`run_task`** uses **real HTTPS** to vendors when env keys exist; otherwise it returns **simulated** stub text.
+**Implementation status:** Architecture below is **target**; the repo is **hybrid**. Admin **connections**, **semantic layer**, and **AI routing profiles** persist to **JSON files** under `apps/api/data/` (overridable via env — see [Technical Design](./04-technical-design.md)). **Ask Data** with `connection_id` runs **`nl2sql_pipeline`**: semantic + physical schema → LLM **`sql_gen`** (when API keys are set) → **`sqlglot`** read-only policy → execute → LLM **`answer_gen`**, with **heuristic fallback** if keys or SQL fail. **Dashboards** persist to **JSON file** (`dashboard_store`, default `apps/api/data/dashboards.json`) while **`dashboard_gen`** uses **`run_task` → `llm_client`** for widget specs (with parse fallback). **Postgres/Redis** from Docker Compose are **not** wired as the app metadata store yet. **`run_task`** uses **real HTTPS** to vendors when env keys exist; otherwise it returns **simulated** stub text.
 
 ## 1. Purpose and scope
 
@@ -23,7 +23,7 @@ Out of scope for this view matches [Product Vision and Scope](./01-product-visio
 | Semantic governance | Admin | Tables, relationships, dictionary, metrics + versioning | **[Partial]** — CRUD + **file-backed** JSON; **no** semantic versioning |
 | Model governance | Admin | AI routing profiles per task | **[Partial]** — profiles **file-backed**; allowlisted providers/models via catalog; **real** HTTPS calls when per-provider **env API keys** are set |
 | Ask data | Business user | NL2SQL pipeline, safety policy, execution, narrative | **[Partial]** — **`connection_id` required**; **LLM NL2SQL** (semantic + physical schema → `sql_gen` → **sqlglot** policy → read-only execute → `answer_gen`) when keys exist; else **heuristic** preview fallback; `evidence.query_kind` distinguishes **`llm_sql`** vs **`llm_sql_heuristic_fallback`** |
-| Dashboard lifecycle | Business user | Create, list, detail, AI edit, versions | **[Partial]** — **in-memory** only; simplified spec merge and version list |
+| Dashboard lifecycle | Business user | Create, list, detail, AI edit, versions | **[Partial]** — **file-backed** JSON; **LLM-generated** widget JSON (`dashboard_gen`) with optional schema hints; version list |
 | Observability | Platform | Request logging, AI task metadata (extend for full metrics) | **[Partial]** — HTTP logging only |
 
 ## 3. Context (system landscape)

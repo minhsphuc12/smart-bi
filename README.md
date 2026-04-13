@@ -35,6 +35,8 @@ Use **`apps/api/.env.example`** as a template. **Never commit** `.env` (it stays
 
 Ask Data **requires** a **`connection_id`** (an Admin datasource). It uses `sql_gen` and `answer_gen` profiles from **Admin → AI routing**. When the matching provider has an API key in the environment, the API calls the vendor over HTTPS; otherwise it falls back to **simulated** router text and a **heuristic** SQL preview against that connection.
 
+**Dashboards** use the **`dashboard_gen`** profile the same way: with API keys you get a **live** widget JSON spec (and optional **`connection_id`** on create/edit — the API **introspects the datasource when needed** so the model can emit per-widget **`sql`**). Without keys, the router returns simulated text and the API applies a **heuristic** two-widget layout. Responses include **`meta.dashboard_gen`** (`live`, `parse_fallback`, `error`, provider/model). Dashboards and version history are written to **`apps/api/data/dashboards.json`** by default (override with **`SMART_BI_DASHBOARDS_FILE`**), same atomic-write pattern as other admin JSON stores.
+
 | Provider | Env vars (first match wins) | Optional base URL |
 |----------|------------------------------|-------------------|
 | **openai** | `SMART_BI_OPENAI_API_KEY`, `OPENAI_API_KEY` | `SMART_BI_OPENAI_BASE_URL` or `OPENAI_API_BASE` (default `https://api.openai.com/v1`) |
@@ -63,6 +65,8 @@ npm install
 npm run dev
 ```
 
+From repo root you can run **`npm run lint:web`** (ESLint via Next), **`npm run build:web`** (`next build` after removing `apps/web/.next` to avoid stale or racing `.next` artifacts), and **`npm run test:e2e`** (Playwright; starts API + web per `playwright.config`). Prefer running these **one after another**, not in parallel, if you ever invoke `next build` / `next dev` manually at the same time.
+
 Next.js automatically loads **`apps/web/.env.local`** (gitignored). Use `NEXT_PUBLIC_API_URL` when the browser should call the API on a non-default host/port (otherwise the app uses same-origin `/api-proxy`).
 
 ## Documentation
@@ -83,8 +87,10 @@ All notable changes to this project are documented in this section. Versions fol
 
 ### [Unreleased]
 
+- Web: add **ESLint** (`eslint`, `eslint-config-next`, `apps/web/.eslintrc.json`); fix admin tab buttons with **`role="tab"`** for a11y; root scripts **`npm run lint:web`** and **`npm run build:web`** (cleans `apps/web/.next` before `next build` to avoid corrupt parallel builds).
 - API: load optional **`.env`** files via `python-dotenv` (`repo/.env` then `apps/api/.env`); add `apps/api/.env.example`.
 - Ask Data: **`connection_id` required** (no bundled demo DB); NL2SQL with **LLM** + **semantic layer** + live schema when provider API keys exist; **sqlglot** policy (read-only SELECT, table allowlist, row cap); heuristic preview fallback; Ask UI picks a configured datasource by default.
+- Dashboards: **`dashboard_gen`** wired to **`llm_client`** with strict JSON widget contract (including per-widget **`sql`** when a datasource is selected), parse fallback; **`POST /dashboards/{id}/run-queries`** executes widget SQL with the same read-only policy as Ask Data; web draws SVG charts / KPI / table from results; **file persistence** (`dashboard_store`, `SMART_BI_DASHBOARDS_FILE`).
 
 ### [0.1.0] — 2026-04-11
 
