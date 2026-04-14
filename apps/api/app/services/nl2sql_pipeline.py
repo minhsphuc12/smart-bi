@@ -12,29 +12,10 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.routers.admin_ai_routing import get_profile_for_task
 from app.routers.admin_connections import get_connection_record
-from app.services import db_engine, semantic_store, sql_policy
+from app.services import db_engine, semantic_store as semantic_store_mod, sql_policy
+from app.services.db_client_errors import humanize_sqlalchemy_error
 from app.services.ai_router import run_task
 from app.services.db_engine import _serialize_cell
-
-
-def _format_semantic(sem: dict[str, Any]) -> str:
-    lines: list[str] = ["## Semantic layer (curated metadata)"]
-    for t in sem.get("tables") or []:
-        if isinstance(t, dict) and t.get("name"):
-            desc = (t.get("description") or "").strip()
-            lines.append(f"- **Table `{t['name']}`**: {desc or '(no description)'}")
-    for r in sem.get("relationships") or []:
-        if isinstance(r, dict) and r.get("name"):
-            lines.append(f"- **Relationship `{r['name']}`**: {(r.get('description') or '').strip()}")
-    for d in sem.get("dictionary") or []:
-        if isinstance(d, dict) and d.get("name"):
-            lines.append(f"- **Term `{d['name']}`**: {(d.get('description') or '').strip()}")
-    for m in sem.get("metrics") or []:
-        if isinstance(m, dict) and m.get("name"):
-            lines.append(f"- **Metric `{m['name']}`**: {(m.get('description') or '').strip()}")
-    if len(lines) == 1:
-        lines.append("- _(empty — add entries in Admin → Semantic layer)_")
-    return "\n".join(lines)
 
 
 def _format_physical_schema(tables: list[dict[str, Any]], max_chars: int = 26000) -> str:
@@ -62,17 +43,18 @@ def _dialect_row_cap_hint(source_type: str, max_rows: int) -> str:
     return f"End the query with `LIMIT {max_rows}`."
 
 
-def _sql_system_prompt(source_type: str, max_rows: int) -> str:
+def _sql_system_prompt(source_type: str, max_rows: int, *, mart_yaml_block: str) -> str:
     cap = _dialect_row_cap_hint(source_type, max_rows)
     return (
         "You are a senior analytics engineer. Generate exactly one read-only SQL query.\n"
         "Hard rules:\n"
         "- Output ONLY the SQL text: a single `SELECT` or `WITH ... SELECT`. No markdown fences, no commentary.\n"
         "- Use ONLY tables that appear in the PHYSICAL SCHEMA list. Qualify with schema when the physical name includes one.\n"
-        "- Respect the semantic layer hints for joins, grain, and business-friendly column choices.\n"
+        "- Respect the semantic YAML (mart definitions below) for joins, grain, metrics, and business-friendly choices.\n"
         f"- Row cap: {cap}\n"
         "- No DDL/DML, no multiple statements, no vendor-specific admin commands.\n"
-        f"- Database dialect: **{source_type}** (generate valid SQL for this engine).\n"
+        f"- Database dialect: **{source_type}** (generate valid SQL for this engine).\n\n"
+        f"{mart_yaml_block.strip()}\n"
     )
 
 
@@ -87,7 +69,7 @@ def _execute_readonly(engine: Engine, sql: str) -> tuple[list[str], list[list[An
 
 def _warnings() -> list[str]:
     return [
-        "SQL was produced by an LLM using your semantic layer + live schema, then policy-checked "
+        "SQL was produced by an LLM using mart semantic YAML + live schema, then policy-checked "
         "(read-only SELECT, allowlisted tables, row cap). Review before operational decisions."
     ]
 
@@ -109,12 +91,11 @@ def answer_question(connection_id: int, question: str, *, max_rows: int = 200) -
         raise ValueError("No user tables visible for this connection. Check grants or schema.")
 
     allowed_names = {str(t["name"]) for t in tables if t.get("name")}
-    sem = semantic_store.load_semantic()
-    sem_txt = _format_semantic(sem)
+    mart_yaml = semantic_store_mod.load_mart_yaml_bundle_text()
     phy_txt = _format_physical_schema(tables)
 
-    system_sql = _sql_system_prompt(conn["source_type"], max_rows)
-    user_sql = f"{sem_txt}\n\n{phy_txt}\n\n## User question\n{question.strip()}"
+    system_sql = _sql_system_prompt(conn["source_type"], max_rows, mart_yaml_block=mart_yaml)
+    user_sql = f"{phy_txt}\n\n## User question\n{question.strip()}"
 
     sql_gen = run_task("sql_gen", user_sql, system_prompt=system_sql)
     if sql_gen.get("error"):
@@ -144,7 +125,9 @@ def answer_question(connection_id: int, question: str, *, max_rows: int = 200) -
         try:
             columns, rows = _execute_readonly(engine, prepared)
         except SQLAlchemyError as exc:
-            raise ValueError(f"Query execution failed: {exc}") from exc
+            raise ValueError(
+                humanize_sqlalchemy_error(exc, prefix="Query execution failed")
+            ) from exc
     finally:
         engine.dispose()
 

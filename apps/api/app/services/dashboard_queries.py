@@ -7,6 +7,8 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
+from app.services.db_client_errors import humanize_sqlalchemy_error
+
 from app.routers.admin_connections import get_connection_record
 from app.services import db_engine, sql_policy
 from app.services.db_engine import _serialize_cell
@@ -65,7 +67,7 @@ def run_widget_sql(
         return {"sql_executed": prepared, "columns": columns, "rows": rows, "error": None}
     except SQLAlchemyError as exc:
         return {
-            "error": f"Query failed: {exc}",
+            "error": humanize_sqlalchemy_error(exc, prefix="Query failed"),
             "sql_executed": prepared,
             "columns": [],
             "rows": [],

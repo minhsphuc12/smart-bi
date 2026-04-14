@@ -21,6 +21,7 @@
 | Concern | Default path | Override env var |
 |---------|----------------|------------------|
 | Datasource connections | `apps/api/data/connections.json` | `SMART_BI_CONNECTIONS_FILE` |
+| Datasource example (Compose Postgres) | `apps/api/data/connections.example.json` | Copy to `connections.json` when bootstrapping local admin connections |
 | Semantic bundle (tables, relationships, dictionary, metrics) — Admin UI CRUD only | `apps/api/data/semantic.json` | `SMART_BI_SEMANTIC_FILE` |
 | LLM semantic context (Ask + dashboards): raw YAML files | `<repo>/mart/` (recursive `*.yml` / `*.yaml`) | `SMART_BI_SEMANTIC_MART_DIR` |
 | AI routing profiles per task | `apps/api/data/ai_routing.json` | `SMART_BI_AI_ROUTING_FILE` |
@@ -178,6 +179,7 @@ Keys are read from the **process environment** after optional **`.env` files** a
 
 ## Change Log
 
+- 2026-04-14: Documented **`connections.example.json`** (Docker Compose Postgres defaults) and **`humanize_sqlalchemy_error`** for clearer HTTP **`detail`** on connection failures.
 - 2026-04-14: Documented mart YAML for Ask Data and `dashboard_gen` system prompts; clarified `semantic.json` is admin CRUD only (`SMART_BI_SEMANTIC_MART_DIR`).
 - 2026-04-14: Admin **mart YAML** read-only API and web tab (`/admin/semantic/mart/files`, `/admin/semantic/mart/content`).
 - 2026-04-14: Web Admin semantic tab label is **Semantic Repo** (was “Mart YAML”); mart file preview uses explicit light text on the dark `<pre>` panel because `var(--text, …)` always resolved to the global dark body text color.

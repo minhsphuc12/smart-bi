@@ -11,7 +11,7 @@ import re
 from typing import Any
 
 from app.routers.admin_connections import get_connection_record
-from app.services import db_engine
+from app.services import db_engine, semantic_store
 from app.services.ai_router import run_task
 
 _MAX_WIDGETS = 10
@@ -20,7 +20,7 @@ _MAX_SQL_CHARS = 20_000
 _ALLOWED_TYPES = frozenset({"line", "bar", "area", "kpi", "table"})
 
 
-def _dashboard_system_prompt(*, edit_mode: bool, require_sql: bool) -> str:
+def _dashboard_system_prompt(*, edit_mode: bool, require_sql: bool, mart_yaml_block: str) -> str:
     sql_block = ""
     if require_sql:
         sql_block = (
@@ -65,6 +65,11 @@ def _dashboard_system_prompt(*, edit_mode: bool, require_sql: bool) -> str:
             "\nYou will be given the current dashboard spec as JSON. "
             "Apply the user's instruction and return the FULL updated object with the same top-level shape.\n"
         )
+    base += (
+        "\n## Business semantics (YAML)\n"
+        "Use the following mart YAML for metrics, dimensions, and join logic when designing widget SQL and titles.\n\n"
+        f"{mart_yaml_block.strip()}\n"
+    )
     return base
 
 
@@ -187,6 +192,7 @@ def generate_spec(
     edit_mode = existing_spec is not None
     schema = _schema_context(connection_id)
     require_sql = connection_id is not None
+    mart_yaml = semantic_store.load_mart_yaml_bundle_text()
     if edit_mode:
         user_body = (
             f"Current dashboard spec (JSON):\n{json.dumps(existing_spec, indent=2)}\n\n"
@@ -198,7 +204,9 @@ def generate_spec(
     ai = run_task(
         "dashboard_gen",
         user_body + schema,
-        system_prompt=_dashboard_system_prompt(edit_mode=edit_mode, require_sql=require_sql),
+        system_prompt=_dashboard_system_prompt(
+            edit_mode=edit_mode, require_sql=require_sql, mart_yaml_block=mart_yaml
+        ),
     )
     if ai.get("error"):
         raise ValueError(str(ai["error"]))

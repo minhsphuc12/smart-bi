@@ -1,6 +1,6 @@
 from threading import Lock
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
 from app.services import semantic_store
@@ -121,3 +121,29 @@ def update_metric(item_id: int, item: GenericItem) -> dict:
         metrics[item_id - 1].update(item.model_dump())
         _persist()
         return metrics[item_id - 1]
+
+
+@router.get("/mart/files")
+def list_mart_yaml_files() -> dict:
+    """List ``*.yml`` / ``*.yaml`` under the configured mart directory (read-only)."""
+    return semantic_store.list_mart_yaml_entries()
+
+
+@router.get("/mart/content")
+def read_mart_yaml_file(
+    relative_path: str = Query(
+        ...,
+        min_length=1,
+        alias="path",
+        description="Path relative to mart root, POSIX-style (also accepted as query name `path`)",
+    ),
+) -> dict:
+    """Return raw file contents for one mart YAML file (read-only)."""
+    try:
+        content = semantic_store.read_mart_yaml_relative(relative_path)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Mart directory or file not found.") from None
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    normalized = relative_path.strip().replace("\\", "/")
+    return {"path": normalized, "content": content}

@@ -112,6 +112,49 @@ def test_admin_semantic_persisted_to_file() -> None:
     assert disk["tables"][0]["name"] == "orders"
 
 
+def test_admin_semantic_mart_list_and_read(monkeypatch, tmp_path) -> None:
+    mart = tmp_path / "tmart"
+    mart.mkdir()
+    (mart / "demo.yml").write_text("version: 1\n", encoding="utf-8")
+    monkeypatch.setenv("SMART_BI_SEMANTIC_MART_DIR", str(mart))
+
+    listed = client.get("/admin/semantic/mart/files")
+    assert listed.status_code == 200
+    data = listed.json()
+    assert data["exists"] is True
+    assert data["root"] == str(mart.resolve())
+    paths = {f["path"] for f in data["files"]}
+    assert "demo.yml" in paths
+
+    got = client.get("/admin/semantic/mart/content", params={"path": "demo.yml"})
+    assert got.status_code == 200
+    assert got.json()["content"] == "version: 1\n"
+
+
+def test_default_mart_semantic_dir_discovers_repo_mart(monkeypatch) -> None:
+    """Without SMART_BI_SEMANTIC_MART_DIR, mart/ should resolve next to the monorepo root."""
+    monkeypatch.delenv("SMART_BI_SEMANTIC_MART_DIR", raising=False)
+    from app.services import semantic_store
+
+    repo = Path(__file__).resolve().parents[3]
+    expected = (repo / "mart").resolve()
+    got = semantic_store.mart_semantic_dir().resolve()
+    assert got == expected, f"expected {expected}, got {got}"
+
+
+def test_admin_semantic_mart_content_validation(monkeypatch, tmp_path) -> None:
+    mart = tmp_path / "m2"
+    mart.mkdir()
+    (mart / "z.yaml").write_text("a: b", encoding="utf-8")
+    monkeypatch.setenv("SMART_BI_SEMANTIC_MART_DIR", str(mart))
+
+    bad = client.get("/admin/semantic/mart/content", params={"path": "../../etc/passwd"})
+    assert bad.status_code == 400
+
+    missing = client.get("/admin/semantic/mart/content", params={"path": "missing.yml"})
+    assert missing.status_code == 404
+
+
 def test_admin_ai_routing_persisted_to_file() -> None:
     from app.services import ai_routing_store
 
@@ -232,3 +275,17 @@ def test_dashboard_run_queries_requires_connection(mock_generate_spec) -> None:
 def test_dashboard_run_queries_not_found() -> None:
     r = client.post("/dashboards/999999/run-queries", json={"connection_id": 1})
     assert r.status_code == 404
+
+
+def test_humanize_sqlalchemy_auth_error() -> None:
+    from sqlalchemy.exc import OperationalError
+
+    from app.services.db_client_errors import humanize_sqlalchemy_error
+
+    inner = Exception(
+        'connection failed: FATAL:  password authentication failed for user "metabase_business_test"'
+    )
+    exc = OperationalError("SELECT 1", {}, inner)
+    msg = humanize_sqlalchemy_error(exc, prefix="Query failed")
+    assert "rejected the username/password" in msg
+    assert "connections.example.json" in msg

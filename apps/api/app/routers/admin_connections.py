@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field, model_validator
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.services import connection_store, db_engine
+from app.services.db_client_errors import humanize_sqlalchemy_error
 
 router = APIRouter(prefix="/admin/connections", tags=["admin-connections"])
 
@@ -130,7 +131,10 @@ def test_connection(connection_id: int) -> dict[str, str | int]:
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except SQLAlchemyError as exc:
-        raise HTTPException(status_code=400, detail=f"Connection failed: {exc}") from exc
+        raise HTTPException(
+            status_code=400,
+            detail=humanize_sqlalchemy_error(exc, prefix="Connection failed"),
+        ) from exc
     return {"status": "success", "connection_id": connection_id}
 
 
@@ -147,6 +151,9 @@ def introspect(connection_id: int) -> dict:
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except SQLAlchemyError as exc:
-        raise HTTPException(status_code=400, detail=f"Introspection failed: {exc}") from exc
+        raise HTTPException(
+            status_code=400,
+            detail=humanize_sqlalchemy_error(exc, prefix="Introspection failed"),
+        ) from exc
     db_engine.set_introspection_cache(connection_id, tables)
     return {"connection_id": connection_id, "tables": tables}

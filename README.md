@@ -12,6 +12,14 @@ Monorepo for Smart BI MVP:
 docker compose up -d
 ```
 
+The Compose file starts **PostgreSQL 16** on **`localhost:5432`** with database **`smartbi`**, user **`smartbi`**, password **`smartbi`**. Admin datasource definitions live in **`apps/api/data/connections.json`** (gitignored). For a fresh setup, copy the tracked example so Ask Data and introspection match Docker:
+
+```bash
+cp apps/api/data/connections.example.json apps/api/data/connections.json
+```
+
+Restart the API after changing connections, then use **Admin → Connections → Introspect** before **Ask Data**.
+
 ### 2) API
 Use **Python 3.12 or 3.13** (Pydantic wheels may not be available for 3.14 yet).
 
@@ -56,6 +64,19 @@ pip install -r requirements.txt
 pytest tests/test_api.py -v
 ```
 
+### Browser smoke (reuse dev servers)
+
+With **Next** on port **3000** and the **API** on **8000** (default `api-proxy` target), you can run a short **Playwright** script that seeds an admin session, opens **Admin → Semantic → Semantic Repo**, checks **`/admin/semantic/mart/files` via fetch**, then loads **Ask Data** and **Dashboards**:
+
+```bash
+cd apps/web
+npm install
+npx playwright install chromium   # once, for browser binaries
+npm run smoke:reuse                 # or: node scripts/browser-smoke-reuse-dev.js
+```
+
+Set **`HEADED=1`** before the command to open a visible Chromium window (needs a local display). Screenshot output: `apps/web/e2e/smoke-reuse-dev.png` (gitignored).
+
 Pytest writes a JSON report to `apps/api/test-record.json` (via `pytest-json-report` in `apps/api/pytest.ini`). That file is gitignored; remove `--json-report` and related flags from `addopts` if you do not want a local report.
 
 ### 3) Web
@@ -87,9 +108,11 @@ All notable changes to this project are documented in this section. Versions fol
 
 ### [Unreleased]
 
+- Local dev: add **`apps/api/data/connections.example.json`** aligned with **`docker-compose.yml`** Postgres credentials; README documents copying it to **`connections.json`**. API maps common PostgreSQL auth/connection errors to short **`detail`** messages (`db_client_errors.humanize_sqlalchemy_error`).
 - API: **Ask Data** and **dashboard AI** use **raw YAML from `mart/`** (plus schema in the user message for SQL) in LLM system prompts instead of formatting **`semantic.json`**; optional **`SMART_BI_SEMANTIC_MART_DIR`** override. Default mart folder is **auto-discovered** (walk parents from the API until a `mart/` directory exists) so local dev matches the checked-out monorepo unless you override.
 - API: Startup **`.env` loading** now uses the real **monorepo root** (`<repo>/.env`) then **`apps/api/.env`** (previously the first slot incorrectly pointed at `apps/.env`, so repo-root env vars such as API keys or mart overrides could be skipped).
 - Web Admin: **Semantic layer → Semantic Repo** lists mart files and shows file contents via **`GET /admin/semantic/mart/files`** and **`GET /admin/semantic/mart/content?path=…`** (read-only).
+- Web: **`npm run smoke:reuse`** (`apps/web/scripts/browser-smoke-reuse-dev.js`) runs Playwright against **localhost:3000 + 8000** without spawning extra servers; set **`HEADED=1`** for a visible Chromium window.
 - API + web: **remove simulated LLM and heuristic fallbacks** for Ask Data, `run_task`, and dashboard generation — missing provider keys, unusable model JSON, SQL policy violations, or execution errors return **HTTP 400** with a `detail` string; Ask and Dashboards UIs surface that message.
 - Web: add **ESLint** (`eslint`, `eslint-config-next`, `apps/web/.eslintrc.json`); fix admin tab buttons with **`role="tab"`** for a11y; root scripts **`npm run lint:web`** and **`npm run build:web`** (cleans `apps/web/.next` before `next build` to avoid corrupt parallel builds).
 - API: load optional **`.env`** files via `python-dotenv` (`repo/.env` then `apps/api/.env`); add `apps/api/.env.example`.

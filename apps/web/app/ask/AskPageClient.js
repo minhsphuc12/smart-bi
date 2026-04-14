@@ -296,7 +296,7 @@ export default function AskPageClient() {
               <h1 style={{ margin: 0 }}>Ask Data</h1>
               <p style={{ margin: 0, color: "var(--text-muted)", maxWidth: 720 }}>
                 Ask in natural language against a configured datasource, inspect the narrative, then audit SQL and
-                tabular evidence. The API runs read-only NL2SQL (LLM + semantic layer + live schema, sqlglot policy)
+                tabular evidence. The API runs read-only NL2SQL (LLM + mart YAML semantics + live schema, sqlglot policy)
                 when provider API keys are configured—never writes. Missing keys return a clear error instead of a
                 degraded preview.
               </p>
