@@ -20,7 +20,7 @@ DEFAULT_PROFILES: dict[str, dict[str, Any]] = {
         "provider": "google",
         "model": "gemini-2.5-flash",
         "temperature": 0.1,
-        "max_tokens": 1500,
+        "max_tokens": 4096,
     },
     "extract_classify": {
         "provider": "openai",

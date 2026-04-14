@@ -179,6 +179,9 @@ Keys are read from the **process environment** after optional **`.env` files** a
 
 ## Change Log
 
+- 2026-04-14: Dashboard AI (`dashboard_ai.py`): `_extract_json_object` handles **root arrays after preamble** (`[` before `{`) and rejects non-widget arrays; **stringified** widget lists; `_unwrap_spec` accepts **one widget as the whole JSON object** when there is no nested widget list; `_normalize_widget` reads **`chartType` / `statement`**, **`name`** as title, and defaults **type → `table`** when SQL is present but type is unknown.
+- 2026-04-14: Dashboard AI (`dashboard_ai.py`): `_unwrap_spec` accepts **alternate widget array keys** (`charts`, `panels`, …), **case-insensitive `widgets`**, **root-level JSON arrays**, nested scan under arbitrary object keys, and **`query` copied to `sql`** during normalization.
+- 2026-04-14: Dashboard AI (`dashboard_ai.py`): balanced-brace JSON extraction (SQL strings may contain `}`), extra `widgets` wrapper keys, chart **type aliases** toward the strict contract, default **`dashboard_gen` max_tokens** 4096, and more specific **HTTP 400** messages when parse or widget schema validation fails.
 - 2026-04-14: Documented **`connections.example.json`** (Docker Compose Postgres defaults) and **`humanize_sqlalchemy_error`** for clearer HTTP **`detail`** on connection failures.
 - 2026-04-14: Documented mart YAML for Ask Data and `dashboard_gen` system prompts; clarified `semantic.json` is admin CRUD only (`SMART_BI_SEMANTIC_MART_DIR`).
 - 2026-04-14: Admin **mart YAML** read-only API and web tab (`/admin/semantic/mart/files`, `/admin/semantic/mart/content`).
