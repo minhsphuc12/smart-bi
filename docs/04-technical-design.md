@@ -21,7 +21,8 @@
 | Concern | Default path | Override env var |
 |---------|----------------|------------------|
 | Datasource connections | `apps/api/data/connections.json` | `SMART_BI_CONNECTIONS_FILE` |
-| Semantic bundle (tables, relationships, dictionary, metrics) | `apps/api/data/semantic.json` | `SMART_BI_SEMANTIC_FILE` |
+| Semantic bundle (tables, relationships, dictionary, metrics) — Admin UI CRUD only | `apps/api/data/semantic.json` | `SMART_BI_SEMANTIC_FILE` |
+| LLM semantic context (Ask + dashboards): raw YAML files | `<repo>/mart/` (recursive `*.yml` / `*.yaml`) | `SMART_BI_SEMANTIC_MART_DIR` |
 | AI routing profiles per task | `apps/api/data/ai_routing.json` | `SMART_BI_AI_ROUTING_FILE` |
 | Dashboards + version history | `apps/api/data/dashboards.json` | `SMART_BI_DASHBOARDS_FILE` |
 
@@ -63,9 +64,9 @@ Routers registered in `apps/api/app/main.py`:
 |---------------|------------------|---------|
 | `auth` | `/auth` | Login / JWT |
 | `admin_connections` | `/admin/connections` | Oracle profiles, test, introspect |
-| `admin_semantic` | `/admin/semantic` | Tables, relationships, dictionary, metrics |
+| `admin_semantic` | `/admin/semantic` | Tables, relationships, dictionary, metrics (JSON); read-only mart browse: **`GET /admin/semantic/mart/files`**, **`GET /admin/semantic/mart/content?path=`** (relative POSIX path under mart root) |
 | `admin_ai_routing` | `/admin/ai-routing` | Catalog (`GET …/catalog`), profiles CRUD, `POST …/validate` |
-| `chat` | `/chat` | Ask data (`POST /chat/questions`) — **`connection_id` required**: **NL2SQL** (semantic + schema → LLM SQL → policy → execute → LLM answer); missing keys / policy / execution errors → **HTTP 400** |
+| `chat` | `/chat` | Ask data (`POST /chat/questions`) — **`connection_id` required**: **NL2SQL** (mart YAML in system prompt + schema in user message → LLM SQL → policy → execute → LLM answer); missing keys / policy / execution errors → **HTTP 400** |
 | `dashboards` | `/dashboards` | CRUD, AI edit, versions |
 
 Health: `GET /health`.
@@ -95,7 +96,7 @@ sequenceDiagram
   W-->>U: Answer card
 ```
 
-**As-built today:** `connection_id` is **required** (no demo placeholder path). **`nl2sql_pipeline`** loads **semantic.json** + cached/introspected **physical schema**, calls **`run_task("sql_gen", …)`** with a strict system prompt, validates via **`sql_policy.prepare_readonly_select`** (`sqlglot`, allowlisted physical tables, CTE names exempt from physical match, row cap), executes read-only via SQLAlchemy `text()`, then calls **`run_task("answer_gen", …)`** with question + SQL + JSON sample rows for the user-facing answer. Missing API keys, invalid SQL, execution errors, or empty model output raise **`ValueError`** → **HTTP 400** with `detail` for the web client. Successful responses set **`evidence.query_kind`** to **`llm_sql`** and **`meta.sql_live` / `meta.answer_live`** to **true**.
+**As-built today:** `connection_id` is **required** (no demo placeholder path). **`nl2sql_pipeline`** loads **concatenated mart YAML** (`semantic_store.load_mart_yaml_bundle_text`) into the **`sql_gen` system prompt**, passes cached/introspected **physical schema** and the user question in the user message, calls **`run_task("sql_gen", …)`**, validates via **`sql_policy.prepare_readonly_select`** (`sqlglot`, allowlisted physical tables, CTE names exempt from physical match, row cap), executes read-only via SQLAlchemy `text()`, then calls **`run_task("answer_gen", …)`** with question + SQL + JSON sample rows for the user-facing answer. Missing API keys, invalid SQL, execution errors, or empty model output raise **`ValueError`** → **HTTP 400** with `detail` for the web client. Successful responses set **`evidence.query_kind`** to **`llm_sql`** and **`meta.sql_live` / `meta.answer_live`** to **true**. **`dashboard_gen`** includes the same mart YAML block in its system prompt (`dashboard_ai.py`).
 
 ## AI Task Profiles
 - `sql_gen`: SQL generation and SQL repair.
@@ -171,5 +172,13 @@ Connection payloads support `source_type`: `oracle` | `postgresql` | `mysql` (se
 | `SMART_BI_OPENAI_BASE_URL` / `OPENAI_API_BASE` | Optional chat-completions base (default OpenAI cloud) |
 | `SMART_BI_ANTHROPIC_API_KEY` / `ANTHROPIC_API_KEY` | Anthropic Messages API |
 | `SMART_BI_GOOGLE_API_KEY` / `GOOGLE_API_KEY` / `GEMINI_API_KEY` | Google Gemini `generateContent` |
+| `SMART_BI_SEMANTIC_MART_DIR` | Optional absolute path to a folder of semantic YAML for LLM prompts (defaults to `<repo>/mart/`) |
 
 Keys are read from the **process environment** after optional **`.env` files** are loaded at API startup: repository root `.env` then `apps/api/.env` (see `app/main.py`; `python-dotenv`). Do not store secrets in `apps/api/data/*.json`.
+
+## Change Log
+
+- 2026-04-14: Documented mart YAML for Ask Data and `dashboard_gen` system prompts; clarified `semantic.json` is admin CRUD only (`SMART_BI_SEMANTIC_MART_DIR`).
+- 2026-04-14: Admin **mart YAML** read-only API and web tab (`/admin/semantic/mart/files`, `/admin/semantic/mart/content`).
+- 2026-04-14: Web Admin semantic tab label is **Semantic Repo** (was “Mart YAML”); mart file preview uses explicit light text on the dark `<pre>` panel because `var(--text, …)` always resolved to the global dark body text color.
+- 2026-04-14: API startup now loads **monorepo root** `.env` (not `apps/.env`); default **mart** directory is discovered by walking up from `semantic_store.py` until a `mart/` folder exists (still overridable with `SMART_BI_SEMANTIC_MART_DIR`).

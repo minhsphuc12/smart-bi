@@ -120,6 +120,130 @@ function SemanticEditor({ segment, title }) {
   );
 }
 
+function MartYamlBrowser() {
+  const [index, setIndex] = useState({ root: "", exists: false, files: [] });
+  const [selected, setSelected] = useState("");
+  const [content, setContent] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const loadIndex = useCallback(async () => {
+    setError("");
+    try {
+      const data = await apiRequest("/admin/semantic/mart/files");
+      setIndex({
+        root: data.root || "",
+        exists: Boolean(data.exists),
+        files: Array.isArray(data.files) ? data.files : []
+      });
+      setSelected((prev) => {
+        if (prev && data.files?.some((f) => f.path === prev)) return prev;
+        return data.files?.[0]?.path || "";
+      });
+    } catch (e) {
+      setError(e.message);
+      setIndex({ root: "", exists: false, files: [] });
+    }
+  }, []);
+
+  useAsync(() => {
+    loadIndex();
+  }, [loadIndex]);
+
+  useEffect(() => {
+    if (!selected) {
+      setContent("");
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      setBusy(true);
+      setError("");
+      try {
+        const q = new URLSearchParams({ path: selected });
+        const data = await apiRequest(`/admin/semantic/mart/content?${q.toString()}`);
+        if (!cancelled) setContent(typeof data.content === "string" ? data.content : "");
+      } catch (e) {
+        if (!cancelled) {
+          setError(e.message);
+          setContent("");
+        }
+      } finally {
+        if (!cancelled) setBusy(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selected]);
+
+  return (
+    <div className="stack">
+      <div className="row-spread">
+        <h2 style={{ margin: 0 }}>Semantic Repo (read-only)</h2>
+        <button type="button" className="btn btn-ghost" onClick={() => loadIndex()} disabled={busy}>
+          Refresh index
+        </button>
+      </div>
+      <p style={{ margin: 0, color: "var(--text-muted)", maxWidth: 900 }}>
+        Same files the API sends to Ask Data and dashboard generation (<span className="mono">mart/</span> or{" "}
+        <span className="mono">SMART_BI_SEMANTIC_MART_DIR</span>). Editing happens in your repo or deploy mount — not
+        here.
+      </p>
+      {index.root ? (
+        <p className="mono" style={{ margin: 0, fontSize: "0.85rem", color: "var(--text-muted)" }}>
+          Root: {index.root}
+        </p>
+      ) : null}
+      {error ? (
+        <p className="badge badge-danger" role="alert">
+          {error}
+        </p>
+      ) : null}
+      {!index.exists ? (
+        <div className="empty">Mart directory is missing or not configured on the API host.</div>
+      ) : index.files.length === 0 ? (
+        <div className="empty">No YAML files found under the mart directory.</div>
+      ) : (
+        <div className="row" style={{ gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}>
+          <div className="field" style={{ minWidth: 220, flex: "0 0 240px" }}>
+            <label htmlFor="mart-file-select">File</label>
+            <select
+              id="mart-file-select"
+              value={selected}
+              onChange={(e) => setSelected(e.target.value)}
+              disabled={busy}
+            >
+              {index.files.map((f) => (
+                <option key={f.path} value={f.path}>
+                  {f.path} {typeof f.bytes === "number" && f.bytes >= 0 ? `(${f.bytes} B)` : ""}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="card" style={{ padding: 0, flex: "1 1 400px", minHeight: 280, overflow: "hidden" }}>
+            <pre
+              className="mono"
+              style={{
+                margin: 0,
+                padding: 16,
+                maxHeight: "min(70vh, 520px)",
+                overflow: "auto",
+                fontSize: "0.8rem",
+                lineHeight: 1.45,
+                background: "var(--surface-2, #0f1419)",
+                color: "#e2e8f0"
+              }}
+            >
+              {busy && !content ? "Loading…" : content || "—"}
+            </pre>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SemanticRow({ segment, item, onSaved, busy, setBusy, setError }) {
   const [desc, setDesc] = useState(item.description || "");
 
@@ -498,13 +622,15 @@ export default function AdminConsole() {
         <h1 style={{ margin: 0 }}>Admin console</h1>
         <p style={{ margin: 0, color: "var(--text-muted)", maxWidth: 820 }}>
           Manage database connections (Oracle, PostgreSQL, MySQL), semantic metadata, and AI routing
-          profiles. Connections, semantic layer, and AI routing are persisted as JSON on the API host
+          profiles. Connections, semantic layer (JSON CRUD), and AI routing are persisted as JSON on the API host
           (defaults: <span className="mono">apps/api/data/connections.json</span>,{" "}
           <span className="mono">apps/api/data/semantic.json</span>,{" "}
-          <span className="mono">apps/api/data/ai_routing.json</span>). Passwords are stored in plaintext in
-          the connections file for this MVP. Override paths with{" "}
+          <span className="mono">apps/api/data/ai_routing.json</span>). Ask Data / dashboards use{" "}
+          <span className="mono">mart/*.yml</span> on the API host (see Semantic → Semantic Repo). Passwords are stored in
+          plaintext in the connections file for this MVP. Override paths with{" "}
           <span className="mono">SMART_BI_CONNECTIONS_FILE</span>,{" "}
-          <span className="mono">SMART_BI_SEMANTIC_FILE</span>, or{" "}
+          <span className="mono">SMART_BI_SEMANTIC_FILE</span>,{" "}
+          <span className="mono">SMART_BI_SEMANTIC_MART_DIR</span>, or{" "}
           <span className="mono">SMART_BI_AI_ROUTING_FILE</span>.
         </p>
       </header>
@@ -821,7 +947,8 @@ export default function AdminConsole() {
               { id: "tables", label: "Tables" },
               { id: "relationships", label: "Relationships" },
               { id: "dictionary", label: "Dictionary" },
-              { id: "metrics", label: "Metrics" }
+              { id: "metrics", label: "Metrics" },
+              { id: "mart_yaml", label: "Semantic Repo" }
             ].map((tab) => (
               <button
                 key={tab.id}
@@ -841,6 +968,7 @@ export default function AdminConsole() {
           ) : null}
           {semanticTab === "dictionary" ? <SemanticEditor segment="dictionary" title="Business terms" /> : null}
           {semanticTab === "metrics" ? <SemanticEditor segment="metrics" title="Metrics" /> : null}
+          {semanticTab === "mart_yaml" ? <MartYamlBrowser /> : null}
         </section>
       ) : null}
 

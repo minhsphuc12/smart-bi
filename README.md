@@ -26,8 +26,8 @@ uvicorn app.main:app --reload --port 8000
 
 On startup the API loads environment files (without clobbering variables already set in the shell):
 
-1. **`<repo>/.env`** — optional shared defaults for the whole monorepo  
-2. **`apps/api/.env`** — optional overrides for the API (wins over repo for duplicate keys)
+1. **`<repo>/.env`** (monorepo root, e.g. `smart-bi/.env`) — optional shared defaults  
+2. **`apps/api/.env`** — optional overrides for the API (**wins** over monorepo `.env` for duplicate keys)
 
 Use **`apps/api/.env.example`** as a template. **Never commit** `.env` (it stays gitignored).
 
@@ -43,7 +43,7 @@ Ask Data **requires** a **`connection_id`** (an Admin datasource) and **provider
 | **anthropic** | `SMART_BI_ANTHROPIC_API_KEY`, `ANTHROPIC_API_KEY` | — |
 | **google** (Gemini) | `SMART_BI_GOOGLE_API_KEY`, `GOOGLE_API_KEY`, `GEMINI_API_KEY` | — |
 
-Set keys in **`apps/api/.env`**, the repo-root `.env`, your shell, or your deployment secret store — **never commit** real tokens. Semantic layer content is loaded from `semantic.json` (or `SMART_BI_SEMANTIC_FILE`) and sent in the SQL prompt together with introspected physical schema.
+Set keys in **`apps/api/.env`**, the repo-root `.env`, your shell, or your deployment secret store — **never commit** real tokens. For **Ask Data** and **dashboard generation**, the API loads all **`*.yml` / `*.yaml`** under the repo’s **`mart/`** directory (recursive), concatenates them as plain text, and attaches that block to the **`sql_gen`** / **`dashboard_gen` system prompts** together with introspected physical schema in the user message. Override the directory with **`SMART_BI_SEMANTIC_MART_DIR`**. Admin **Semantic layer** CRUD still persists to **`semantic.json`** (`SMART_BI_SEMANTIC_FILE`) for the UI; it is **not** injected into those LLM prompts anymore.
 
 ### API tests
 
@@ -87,10 +87,13 @@ All notable changes to this project are documented in this section. Versions fol
 
 ### [Unreleased]
 
+- API: **Ask Data** and **dashboard AI** use **raw YAML from `mart/`** (plus schema in the user message for SQL) in LLM system prompts instead of formatting **`semantic.json`**; optional **`SMART_BI_SEMANTIC_MART_DIR`** override. Default mart folder is **auto-discovered** (walk parents from the API until a `mart/` directory exists) so local dev matches the checked-out monorepo unless you override.
+- API: Startup **`.env` loading** now uses the real **monorepo root** (`<repo>/.env`) then **`apps/api/.env`** (previously the first slot incorrectly pointed at `apps/.env`, so repo-root env vars such as API keys or mart overrides could be skipped).
+- Web Admin: **Semantic layer → Semantic Repo** lists mart files and shows file contents via **`GET /admin/semantic/mart/files`** and **`GET /admin/semantic/mart/content?path=…`** (read-only).
 - API + web: **remove simulated LLM and heuristic fallbacks** for Ask Data, `run_task`, and dashboard generation — missing provider keys, unusable model JSON, SQL policy violations, or execution errors return **HTTP 400** with a `detail` string; Ask and Dashboards UIs surface that message.
 - Web: add **ESLint** (`eslint`, `eslint-config-next`, `apps/web/.eslintrc.json`); fix admin tab buttons with **`role="tab"`** for a11y; root scripts **`npm run lint:web`** and **`npm run build:web`** (cleans `apps/web/.next` before `next build` to avoid corrupt parallel builds).
 - API: load optional **`.env`** files via `python-dotenv` (`repo/.env` then `apps/api/.env`); add `apps/api/.env.example`.
-- Ask Data: **`connection_id` required** (no bundled demo DB); NL2SQL with **LLM** + **semantic layer** + live schema; **sqlglot** policy (read-only SELECT, table allowlist, row cap); **no** heuristic preview when keys or SQL path fail — **HTTP 400** with `detail`; Ask UI picks a configured datasource by default.
+- Ask Data: **`connection_id` required** (no bundled demo DB); NL2SQL with **LLM** + **mart YAML semantics** + live schema; **sqlglot** policy (read-only SELECT, table allowlist, row cap); **no** heuristic preview when keys or SQL path fail — **HTTP 400** with `detail`; Ask UI picks a configured datasource by default.
 - Dashboards: **`dashboard_gen`** wired to **`llm_client`** with strict JSON widget contract (including per-widget **`sql`** when a datasource is selected); **no** heuristic widget layout on parse failure — **HTTP 400**; **`POST /dashboards/{id}/run-queries`** executes widget SQL with the same read-only policy as Ask Data; web draws SVG charts / KPI / table from results; **file persistence** (`dashboard_store`, `SMART_BI_DASHBOARDS_FILE`). **Manual CRUD:** **`PATCH` / `DELETE /dashboards/{id}`**; **`POST` / `PATCH` / `DELETE /dashboards/{id}/widgets/{index}`** (validated like LLM output, max 10 widgets); list/detail UIs support rename, delete dashboard, and add/edit/remove widgets.
 
 ### [0.1.0] — 2026-04-11

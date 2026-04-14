@@ -33,6 +33,8 @@ test.describe("Smart BI MVP", () => {
     await expect(page.getByLabel("Source type")).toBeVisible();
     await page.getByRole("tab", { name: "Semantic layer" }).click();
     await expect(page.getByRole("heading", { name: "Table dictionary" })).toBeVisible();
+    await page.getByRole("tab", { name: "Semantic Repo" }).click();
+    await expect(page.getByRole("heading", { name: "Semantic Repo (read-only)" })).toBeVisible();
   });
 
   test("ask data: submit only with a configured datasource", async ({ page }) => {
